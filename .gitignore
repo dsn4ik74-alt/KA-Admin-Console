@@ -11,8 +11,10 @@ htmlcov/
 
 # Generated releases, diagnostics and rollback copies
 /dist/
-/build/*
-!/build/run_tests.py
+/build/
+/tests/
+/CONFIGURATION_INSTALL.md
+/SCHEDULER.md
 /rollback/
 /vendor/
 *.lnk
