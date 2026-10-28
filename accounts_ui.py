@@ -120,6 +120,8 @@ class AccountsPanel(tk.Frame):
         self.table.bind("<<TreeviewSelect>>", self._show_detail)
 
     def set_compact(self, compact):
+        for button in (self.create_button,self.preview_button,self.copy_button,self.clear_button):
+            button.configure(padx=5 if compact else 12)
         if compact:
             self.heading.pack_forget()
         elif not self.heading.winfo_manager():

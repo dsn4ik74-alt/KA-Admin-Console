@@ -13,7 +13,7 @@ from ssh_connection import connect
 
 
 def run_script(module,values,payload,event,cancel,files=(),elevate=False):
-    if module not in ('postgres_install_linux','linux_disk_scan','linux_disk_delete'):raise ValueError('Неизвестный исполнитель SSH')
+    if module not in ('postgres_install_linux','linux_disk_scan','linux_disk_delete','web_publication_linux'):raise ValueError('Неизвестный исполнитель SSH')
     if any(c in (values.get('sudo_password') or values.get('password','')) for c in '\r\n\x00'):raise ValueError('Пароль SSH / sudo не должен содержать переносы строк')
     token=uuid4().hex;root='/tmp/ka-job-'+token
     with connect(values) as client:

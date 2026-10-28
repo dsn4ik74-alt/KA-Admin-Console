@@ -1,11 +1,13 @@
 """Install only the selected 1C PostgreSQL build and initialize one chosen path."""
 from contextlib import contextmanager
+import hashlib
 import ipaddress
 import os
 from pathlib import Path
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -211,6 +213,42 @@ def unit_quote(value,exec_argument=False):
     return '"'+text+'"'
 
 
+def binary_tree(root,cancel):
+    """Compare a failed installation with the archive without altering either."""
+    root=Path(root)
+    if root.is_symlink() or not root.is_dir():raise ValueError('Каталог программы занят файлом или ссылкой')
+    entries={}
+    for path in root.rglob('*'):
+        if cancel.is_set():raise Cancelled('Проверка распакованного комплекта отменена')
+        relative=path.relative_to(root).as_posix();info=path.lstat()
+        if path.is_symlink():
+            if not path.resolve().is_relative_to(root.resolve()):raise ValueError('Ссылка библиотеки выходит за каталог программы: '+relative)
+            entries[relative]=('link',os.readlink(path))
+        elif stat.S_ISDIR(info.st_mode):entries[relative]=('directory',)
+        elif stat.S_ISREG(info.st_mode):
+            with path.open('rb') as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
+            entries[relative]=('file',info.st_size,digest,stat.S_IMODE(info.st_mode))
+        else:raise ValueError('Необычный файл в каталоге программы: '+relative)
+    return entries
+
+
+def binary_library_path(binary):
+    prefix=binary.parent
+    folders=[prefix/name for name in ('lib','lib64') if (prefix/name).is_dir()]
+    if not any((folder/'libpq.so.5').is_file() for folder in folders):
+        raise ValueError('В бинарном комплекте отсутствует libpq.so.5. Выберите полный дистрибутив PostgreSQL.')
+    for folder in folders:
+        if ':' in str(folder)[len(folder.drive):] or not folder.resolve().is_relative_to(prefix.resolve()):
+            raise ValueError('Некорректный каталог библиотек PostgreSQL: '+str(folder))
+    return ':'.join(map(str,folders))
+
+
+def postgres_command(binary,library_path,tool,*args):
+    # Set the loader path AFTER switching user: runuser/PAM can sanitize it.
+    return ['runuser','-u','postgres','--','/usr/bin/env','LD_LIBRARY_PATH='+library_path,
+            'LC_ALL=C.UTF-8',str(binary/tool),*args]
+
+
 def service_content(config,row,binary):
     header='[Unit]\nDescription=PostgreSQL 1C '+row['version']+'\nAfter=network.target\n'
     mounts='RequiresMountsFor='+unit_quote(config['data'])+'\n'
@@ -227,6 +265,7 @@ def service_content(config,row,binary):
                 'ExecReload='+command+args+' reload\nPIDFile=/run/postgresql/'+cluster+'.pid\n'
                 'TimeoutStartSec=0\nTimeoutStopSec=0\n[Install]\nWantedBy=multi-user.target\n')
     return (header+mounts+'[Service]\nType=simple\nUser=postgres\nGroup=postgres\n'
+            'Environment='+unit_quote('LD_LIBRARY_PATH='+config.get('library_path',str(binary.parent/'lib')))+'\n'
             'ExecStart='+unit_quote(binary/'postgres',True)+' -D '+unit_quote(config['data'],True)+'\n'
             'ExecReload=/bin/kill -HUP $MAINPID\nKillMode=mixed\nKillSignal=SIGINT\nTimeoutStopSec=0\n'
             'Restart=on-failure\n[Install]\nWantedBy=multi-user.target\n')
@@ -289,11 +328,23 @@ def install_instance(payload,event,cancel):
         if not dependencies:raise ValueError('В карточке релиза ИТС не найдены зависимости для этой ОС. Установка остановлена до изменения системы.')
         if any(not re.fullmatch(r'[a-z0-9][a-z0-9+.-]{0,100}',p) for p in dependencies):raise ValueError('Некорректное имя зависимости')
         prefix=Path(config['prefix'])
-        if not prefix.is_absolute() or prefix==Path('/') or prefix.exists():raise ValueError('Укажите новый отдельный каталог программы PostgreSQL')
+        if not prefix.is_absolute() or prefix==Path('/'):raise ValueError('Укажите отдельный каталог программы PostgreSQL')
         bins=[p for p in unpacked.rglob('bin/postgres') if p.is_file()]
         if len(bins)!=1:raise ValueError('Не найден однозначный каталог бинарного дистрибутива PostgreSQL')
+        source=bins[0].parent.parent
+        event(dict(kind='stage',text='Проверка файлов бинарного комплекта PostgreSQL'))
+        expected=binary_tree(source,cancel)
+        if prefix.exists() and binary_tree(prefix,cancel)!=expected:
+            raise ValueError('Каталог программы уже занят и отличается от выбранного дистрибутива. Он не изменён; выберите другой каталог.')
         install_apt_packages([*dependencies,'locales'],event,cancel,env)
-        shutil.copytree(bins[0].parent.parent,prefix,symlinks=True);binary=prefix/'bin'
+        if prefix.exists():
+            if binary_tree(prefix,cancel)!=expected:
+                raise ValueError('Каталог программы изменился во время установки; существующие файлы не заменялись.')
+            event(dict(kind='message',text='Повторная установка: используется проверенный комплект '+str(prefix)))
+        else:shutil.copytree(source,prefix,symlinks=True)
+        binary=prefix/'bin'
+        config['library_path']=binary_library_path(binary)
+        event(dict(kind='message',text='Библиотеки экземпляра: '+config['library_path']))
     if cancel.is_set():raise Cancelled('Пакеты установлены; создание экземпляра отменено')
     # A newly installed dependency may itself provide a unit with this name.
     service_target(config['name'])
@@ -301,6 +352,14 @@ def install_instance(payload,event,cancel):
     except KeyError:
         run_cmd(['useradd','--system','--user-group','--home-dir','/var/lib/postgresql','--shell','/bin/bash','postgres'])
         owner=pwd.getpwnam('postgres')
+    if row['format']!='package':
+        event(dict(kind='stage',text='Проверка запуска PostgreSQL и библиотек до создания данных'))
+        for tool in ('postgres','initdb','pg_isready','psql'):
+            try:run_cmd(postgres_command(binary,config['library_path'],tool,'--version'))
+            except Cancelled:raise
+            except RuntimeError as exc:
+                raise RuntimeError('Не удалось запустить '+tool+' с библиотеками из '+config['library_path']+'. '
+                                   'Экземпляр и служба не созданы. '+str(exc)) from None
     # Generate only the selected locale, rather than changing the system locale.
     known=subprocess.check_output(['locale','-a'],text=True).casefold().replace('-','')
     if config['locale'].casefold().replace('-','') not in known:
@@ -323,8 +382,8 @@ def install_instance(payload,event,cancel):
                      '--locale='+config['locale'],'--start-conf=manual','--','--auth-local=peer','--auth-host='+auth,'--pwfile='+pwfile])
             conf=Path('/etc/postgresql')/major/config['name']/'postgresql.conf';hba=conf.parent/'pg_hba.conf'
         else:
-            run_cmd(['runuser','-u','postgres','--',str(binary/'initdb'),'-D',str(data),'--locale='+config['locale'],
-                     '--encoding=UTF8','--auth-local=peer','--auth-host='+auth,'--pwfile='+pwfile])
+            run_cmd(postgres_command(binary,config['library_path'],'initdb','-D',str(data),'--locale='+config['locale'],
+                     '--encoding=UTF8','--auth-local=peer','--auth-host='+auth,'--pwfile='+pwfile))
             conf=data/'postgresql.conf';hba=data/'pg_hba.conf'
         with conf.open('a') as stream:stream.write('\n# KA installation\nport = '+str(config['port'])+'\nlisten_addresses = '+pg_literal(config['listen'])+'\n')
         with hba.open('a') as stream:
@@ -333,9 +392,10 @@ def install_instance(payload,event,cancel):
         event(dict(kind='message',text='Служба '+unit_name+'; файл: '+str(target)))
         run_cmd(['systemctl','daemon-reload']);run_cmd(['systemctl','enable',unit_name]);run_cmd(['systemctl','start',unit_name])
         verify_env=dict(os.environ,PGPASSWORD=config['password'],PGCONNECT_TIMEOUT='10',PGCLIENTENCODING='UTF8')
+        if row['format']!='package':verify_env['LD_LIBRARY_PATH']=config['library_path']
         deadline=time.monotonic()+40
         while True:
-            ready=subprocess.run([str(binary/'pg_isready'),'-h','127.0.0.1','-p',str(config['port']),'-t','2'],capture_output=True)
+            ready=subprocess.run([str(binary/'pg_isready'),'-h','127.0.0.1','-p',str(config['port']),'-t','2'],capture_output=True,env=verify_env)
             if ready.returncode==0:break
             if cancel.is_set():raise Cancelled('Служба создана; проверка готовности прервана. Проверьте экземпляр перед повтором.')
             if time.monotonic()>deadline:raise RuntimeError('Служба создана, но PostgreSQL не подтвердил готовность на выбранном порту')

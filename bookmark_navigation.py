@@ -15,7 +15,8 @@ PAGES = {"servers": "Серверы", "bases": "ИБ", "accounts": "Создан
          "cluster_infobase": "Добавить базу в кластер", "db_copy": "Бэкап + восстановление · MSSQL",
          "pg_copy": "Бэкап + восстановление", "platform_install": "Установка 1С из ИТС", "windirstat": "WinDirStat",
          "scheduler": "Планировщик", "configuration_install": "Установка конфигураций",
-         "postgres_install": "Установка PostgreSQL из ИТС", "linux_disk": "Анализ диска по SSH"}
+         "postgres_install": "Установка PostgreSQL из ИТС", "linux_disk": "Анализ диска по SSH",
+         "web_publication": "Публикация ИБ", "file_transfer": "Передача файлов / Robocopy"}
 
 
 def postgres_folder():
@@ -35,9 +36,11 @@ def default_layout():
                 {"id": "cluster_infobase", "title": PAGES["cluster_infobase"]},
                 {"id": "jr_archive", "title": PAGES["jr_archive"]},
                 {"id": "platform_install", "title": PAGES["platform_install"]},
-                {"id": "configuration_install", "title": PAGES["configuration_install"]}]},
+                {"id": "configuration_install", "title": PAGES["configuration_install"]},
+                {"id": "web_publication", "title": PAGES["web_publication"]}]},
             {"id": "folder-win", "title": "Win", "children": [
-                {"id": "accounts", "title": PAGES["accounts"]}, service_folder(), {'id': 'windirstat', 'title': PAGES['windirstat']}]},
+                {"id": "accounts", "title": PAGES["accounts"]}, service_folder(), {'id': 'windirstat', 'title': PAGES['windirstat']},
+                {'id':'file_transfer','title':PAGES['file_transfer']}]},
             sql_folder(),{'id':'folder-linux','title':'Linux','children':[{'id':'linux_disk','title':PAGES['linux_disk']}]}]
 
 
@@ -151,6 +154,12 @@ class NavigationLayout:
                 parent=self.find('folder-sql') if key=='postgres_install' else None
                 (parent['children'] if parent is not None and 'children' in parent else self.nodes).append(folder)
             folder['children'].append(dict(id=key,title=PAGES[key]));seen.add(key)
+        for key, folder_key in (('web_publication','folder-1c'),('file_transfer','folder-win')):
+            if key not in seen:
+                folder=self.find(folder_key)
+                (folder['children'] if folder and 'children' in folder else self.nodes).append({'id':key,'title':PAGES[key]})
+                seen.add(key)
+
         for key, title in PAGES.items():
             if key not in seen:
                 self.nodes.append({"id": key, "title": title})
@@ -261,8 +270,9 @@ class NavigationLayout:
 
 class BookmarkBar(tk.Frame):
     """Hover menus built from Tk widgets, allowing drag across menu windows."""
-    def __init__(self, parent, colors, saved, activate, changed):
-        super().__init__(parent, bg=colors["bg"])
+    def __init__(self, parent, colors, saved, activate, changed, vertical=False):
+        super().__init__(parent, bg=colors['panel'] if vertical else colors["bg"])
+        self.vertical = vertical
         self.c, self.activate, self.changed = colors, activate, changed
         self.activate_tab = self.can_close_tab = None
         self.layout = NavigationLayout(saved)
@@ -275,9 +285,11 @@ class BookmarkBar(tk.Frame):
         self._context_menu = None
         self._widgets = []
         self.folder_icon = self._folder_icon()
-        self.canvas = tk.Canvas(self, bg=colors["bg"], bd=0, highlightthickness=0, height=28)
-        self.canvas.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.items = tk.Frame(self.canvas, bg=colors["bg"])
+        background = colors['panel'] if vertical else colors['bg']
+        self.canvas = tk.Canvas(self, bg=background, bd=0, highlightthickness=0,
+                                width=1 if vertical else 300, height=1 if vertical else 28)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH if vertical else tk.X, expand=True)
+        self.items = tk.Frame(self.canvas, bg=background)
         self._canvas_item = self.canvas.create_window(0, 0, anchor=tk.NW, window=self.items)
         self.items.bind("<Configure>", self._size)
         self.canvas.bind("<Configure>", self._size)
@@ -294,6 +306,14 @@ class BookmarkBar(tk.Frame):
                                     activebackground=colors['button_hover'], activeforeground=colors['fg'],
                                     font=('Segoe UI', 9), padx=8, pady=4, cursor='hand2')
         self.tab_button.pack(side=tk.RIGHT, padx=(8, 0))
+        self.vertical_scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.vertical_scroll.set)
+        if vertical:
+            self.add_button.configure(text='+ Раздел', image='')
+            self.add_button.pack_forget()
+            self.tab_button.pack_forget()
+            self.add_button.pack(side=tk.BOTTOM, fill=tk.X, pady=(4, 0), before=self.canvas)
+            self.tab_button.pack(side=tk.BOTTOM, fill=tk.X, pady=(4, 0), before=self.canvas)
         self.overflow = tk.Frame(self, bg=colors['bg'])
         self.overflow_buttons = []
         for caption, direction in (('‹', -1), ('›', 1)):
@@ -321,6 +341,15 @@ class BookmarkBar(tk.Frame):
         return icon
 
     def _size(self, event=None):
+        if self.vertical:
+            self.canvas.itemconfigure(self._canvas_item, width=max(1, self.canvas.winfo_width()))
+            self.canvas.configure(scrollregion=self.canvas.bbox('all'))
+            if self.items.winfo_reqheight() > self.canvas.winfo_height() + 2:
+                if not self.vertical_scroll.winfo_manager():
+                    self.vertical_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+            elif self.vertical_scroll.winfo_manager():
+                self.vertical_scroll.pack_forget()
+            return
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         if self.items.winfo_reqwidth() > max(1, self.canvas.winfo_width()) + 2:
             if not self.overflow.winfo_manager():
@@ -342,23 +371,35 @@ class BookmarkBar(tk.Frame):
             child.destroy()
         for node in self.layout.nodes:
             widget = self._entry(self.items, node, None, 0, horizontal=True)
-            widget.pack(side=tk.LEFT, padx=(0, 4), pady=1)
+            if self.vertical:
+                widget.pack(fill=tk.X, pady=1)
+            else:
+                widget.pack(side=tk.LEFT, padx=(0, 4), pady=1)
         self._size()
 
     def _entry(self, parent, node, container, depth, horizontal=False):
         folder = "children" in node
-        text = (node["title"] + ("  ▾" if horizontal else "  ›")) if folder else node["title"]
+        text = (node["title"] + ("  ▾" if horizontal and not self.vertical else "  ›")) if folder else node["title"]
         selected = self.layout.contains(node["id"], self.active)
-        widget = tk.Label(parent, text=text, image=self.folder_icon if folder else "", compound=tk.LEFT,
+        section = self.vertical and horizontal
+        if section:
+            symbol = {'folder-1c': '◈', 'folder-win': '⊞', 'folder-sql': '▤',
+                      'folder-linux': '⌘', 'scheduler': '◷'}.get(node['id'], '◇' if folder else '•')
+            text = symbol + '   ' + text
+        background = (self.c['accent'] if section else self.c['selected']) if selected else self.c[
+            'bg' if horizontal and not self.vertical else 'panel']
+        foreground = self.c['accent_fg'] if section and selected else self.c['fg']
+        widget = tk.Label(parent, text=text, image=self.folder_icon if folder and not section else "", compound=tk.LEFT,
                           font=("Segoe UI", 9), anchor=tk.W,
-                          bg=self.c["selected"] if selected else self.c["bg" if horizontal else "panel"],
-                          fg=self.c["fg"] if self.enabled else self.c["muted"],
-                          bd=0, padx=8, pady=4, cursor="hand2" if self.enabled else "arrow",
-                          highlightthickness=1, highlightbackground=self.c["bg"] if horizontal else self.c["panel"],
+                          bg=background, fg=foreground if self.enabled else self.c['muted'],
+                          bd=0, padx=8, pady=5 if section else 4, cursor="hand2" if self.enabled else "arrow",
+                          highlightthickness=1, highlightbackground=self.c["bg"] if horizontal and not self.vertical else self.c["panel"],
                           highlightcolor=self.c["accent"], takefocus=True)
         widget._node, widget._container, widget._depth = node["id"], container, depth
         widget._horizontal = horizontal
+        widget._section = section
         widget._base = widget.cget("bg")
+        widget._base_fg = foreground
         self._widgets.append(widget)
         widget.bind("<Enter>", lambda event: self._enter(widget))
         widget.bind("<Leave>", lambda event: self._leave(widget))
@@ -380,9 +421,10 @@ class BookmarkBar(tk.Frame):
         for widget in self._widgets:
             if widget.winfo_exists():
                 selected = self.layout.contains(widget._node, page)
-                widget._base = self.c["selected"] if selected else self.c[
-                    "bg" if widget._horizontal else "panel"]
-                widget.configure(bg=widget._base)
+                widget._base = self.c['accent' if widget._section else 'selected'] if selected else self.c[
+                    "bg" if widget._horizontal and not self.vertical else "panel"]
+                widget._base_fg = self.c['accent_fg'] if widget._section and selected else self.c['fg']
+                widget.configure(bg=widget._base, fg=widget._base_fg if self.enabled else self.c['muted'])
 
     def breadcrumb(self, page):
         node = self.layout.find(page)
@@ -407,7 +449,7 @@ class BookmarkBar(tk.Frame):
             self._escape()
         for widget in self._widgets:
             if widget.winfo_exists():
-                widget.configure(fg=self.c["fg"] if enabled else self.c["muted"],
+                widget.configure(fg=widget._base_fg if enabled else self.c["muted"],
                                  cursor="hand2" if enabled else "arrow")
 
     def _cancel(self, attr):
@@ -420,7 +462,9 @@ class BookmarkBar(tk.Frame):
         self._cancel("_hide_job")
         self._cancel("_hover_job")
         if self.enabled and not self._pressed:
-            widget.configure(bg=self.c["button_hover"])
+            active_section = widget._section and widget._base == self.c['accent']
+            widget.configure(bg=widget._base if active_section else self.c["button_hover"],
+                             fg=widget._base_fg)
             self._hover_job = self.after(180, lambda: self._hover(widget))
 
     def _hover(self, widget):
@@ -433,7 +477,7 @@ class BookmarkBar(tk.Frame):
                 self._close_menus(widget._depth)
 
     def _leave(self, widget):
-        widget.configure(bg=widget._base)
+        widget.configure(bg=widget._base, fg=widget._base_fg)
         self._cancel("_hover_job")
         self._schedule_hide()
 
@@ -510,10 +554,11 @@ class BookmarkBar(tk.Frame):
         view.configure(width=width, height=height, scrollregion=view.bbox("all"))
         if content.winfo_reqheight() > height:
             scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        x = widget.winfo_rootx() if widget._horizontal else widget.winfo_rootx() + widget.winfo_width() - 2
-        y = widget.winfo_rooty() + widget.winfo_height() + 2 if widget._horizontal else widget.winfo_rooty() - 4
+        below = widget._horizontal and not self.vertical
+        x = widget.winfo_rootx() if below else widget.winfo_rootx() + widget.winfo_width() - 2
+        y = widget.winfo_rooty() + widget.winfo_height() + 2 if below else widget.winfo_rooty() - 4
         popup.update_idletasks()
-        if x + popup.winfo_reqwidth() > self.winfo_screenwidth() and not widget._horizontal:
+        if x + popup.winfo_reqwidth() > self.winfo_screenwidth() and not below:
             x = widget.winfo_rootx() - popup.winfo_reqwidth() + 2
         x = max(0, min(x, self.winfo_screenwidth() - popup.winfo_reqwidth()))
         y = max(0, min(y, self.winfo_screenheight() - popup.winfo_reqheight() - 40))
@@ -574,8 +619,9 @@ class BookmarkBar(tk.Frame):
         while widget is not None:
             if hasattr(widget, "_node"):
                 node = self.layout.find(widget._node)
-                pos = x - widget.winfo_rootx() if widget._horizontal else y - widget.winfo_rooty()
-                size = widget.winfo_width() if widget._horizontal else widget.winfo_height()
+                horizontal = widget._horizontal and not self.vertical
+                pos = x - widget.winfo_rootx() if horizontal else y - widget.winfo_rooty()
+                size = widget.winfo_width() if horizontal else widget.winfo_height()
                 margin = min(16, size / 4)
                 if "children" in node and margin <= pos <= size - margin:
                     return (node["id"], len(node["children"]), widget, True)
@@ -614,7 +660,7 @@ class BookmarkBar(tk.Frame):
                 widget = target[2]
                 if hasattr(widget, "_node"):
                     self._marked = widget
-                    widget.configure(highlightbackground=self.c["accent"], bg=self.c["selected"])
+                    widget.configure(highlightbackground=self.c["accent"], bg=self.c["selected"], fg=self.c['fg'])
                 if target[3]:
                     self._hover_job = self.after(400, lambda: self._hover(widget))
         self.configure(cursor="fleur" if valid else "X_cursor")
@@ -628,16 +674,19 @@ class BookmarkBar(tk.Frame):
                     popup._view.yview_scroll(1, "units")
         # Scroll the root strip when dragging to an edge.
         if self.canvas.winfo_rooty() <= event.y_root <= self.canvas.winfo_rooty() + self.canvas.winfo_height():
-            offset = event.x_root - self.canvas.winfo_rootx()
+            offset = event.y_root - self.canvas.winfo_rooty() if self.vertical else event.x_root - self.canvas.winfo_rootx()
+            size = self.canvas.winfo_height() if self.vertical else self.canvas.winfo_width()
+            scroll = self.canvas.yview_scroll if self.vertical else self.canvas.xview_scroll
             if offset < 24:
-                self.canvas.xview_scroll(-1, "units")
-            elif offset > self.canvas.winfo_width() - 24:
-                self.canvas.xview_scroll(1, "units")
+                scroll(-1, "units")
+            elif offset > size - 24:
+                scroll(1, "units")
         return "break"
 
     def _unmark(self):
         if self._marked is not None and self._marked.winfo_exists():
-            self._marked.configure(highlightbackground=self.c["border"], bg=self._marked._base)
+            self._marked.configure(highlightbackground=self.c["border"], bg=self._marked._base,
+                                   fg=self._marked._base_fg)
         self._marked = None
 
     def _release(self, event):

@@ -45,10 +45,12 @@ from scheduler_ui import SchedulerPanel, install_schedule_button
 from infobase_launcher import prepare_client, start_client
 from infobase_address import infobase_address
 from ui_theme import COLORS, WorkspaceSidebar, apply_styles
+from web_publication_ui import WebPublicationPanel
+from file_transfer_ui import FileTransferPanel
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.21"
+APP_VERSION = "20.33.23"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -271,21 +273,8 @@ class App:
 
         navigation = tk.Frame(self.root, bg=C["bg"])
         navigation.pack(fill=tk.X, padx=18, pady=(14, 10), before=source)
-        brand = tk.Frame(navigation, bg=C['panel'], padx=6, pady=3,
-                         highlightthickness=1, highlightbackground=C['border'], cursor='hand2')
-        brand.pack(side=tk.LEFT, padx=(0, 10))
-        icon = tk.Label(brand, image=self._app_icon, bg=C['panel'], cursor='hand2')
-        icon.pack(side=tk.LEFT)
-        caption = self._label(brand, 'Консоль КА', 9, bold=True)
-        caption.configure(cursor='hand2')
-        caption.pack(side=tk.LEFT, padx=(5, 0))
-        self.brand_caption = caption
-        for widget in (brand, icon, caption):
-            widget.bind('<Button-1>', lambda event: self._switch_mode('home'))
-        self.home_badge = brand
-        self.home_button = self._button(navigation, 'Главная', lambda: self._switch_mode('home'))
-        self.home_button.configure(font=('Segoe UI', 9), padx=8, pady=4)
-        self.home_button.pack(side=tk.LEFT, padx=(0, 6))
+        self.home_badge = self.sidebar.brand
+        self.home_button = self.sidebar.home
         self.btn_pick = self._button(source, 'Выбрать файл', self._pick_lst)
         self.btn_pick.pack(side=tk.RIGHT, padx=(8, 0))
         self.btn_local = self._button(source, 'Локальные списки', self._discover)
@@ -296,13 +285,13 @@ class App:
         self.favorites_button.pack(side=tk.RIGHT, padx=6)
         self.btn_update = self._button(navigation, "Обновить", self._on_update_clicked, primary=True)
         self.btn_update.pack(side=tk.RIGHT)
-        self.bookmarks = BookmarkBar(navigation, C, self._settings.get("navigation_layout"),
-                                     self._switch_mode, self._save_navigation)
+        self.bookmarks = BookmarkBar(self.sidebar.folder_host, C, self._settings.get("navigation_layout"),
+                                     self._switch_mode, self._save_navigation, vertical=True)
         self.bookmarks.activate_tab = self._switch_mode
         self.bookmarks.can_close_tab = self._can_close_tab
         self.running_tasks = RunningTasks(navigation, C, self._switch_mode)
         self._settings["navigation_layout"] = self.bookmarks.layout.snapshot()
-        self.bookmarks.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 16))
+        self.bookmarks.pack(fill=tk.BOTH, expand=True)
         self._navigation_hint = self._label(self.root, self.bookmarks.breadcrumb(self.mode),
                                             9, "muted", anchor=tk.W)
         self._navigation_hint.pack(fill=tk.X, padx=22, pady=(0, 6), before=source)
@@ -527,7 +516,8 @@ class App:
                    {'accounts': AccountsPanel, 'jr_archive': ArchivePanel, 'cluster_infobase': ClusterInfobasePanel,
                     'db_copy': SqlCopyPanel, 'pg_copy': PostgresCopyPanel, 'platform_install': PlatformInstallPanel,
                     'configuration_install': ConfigurationInstallPanel,
-                    'windirstat': WinDirStatPanel, 'postgres_install': PostgresInstallPanel, 'linux_disk': LinuxDiskPanel}.get(mode))
+                    'windirstat': WinDirStatPanel, 'postgres_install': PostgresInstallPanel, 'linux_disk': LinuxDiskPanel,
+                    'web_publication':WebPublicationPanel,'file_transfer':FileTransferPanel}.get(mode))
         if factory is None:
             return self._pages.get(mode)
         panel = factory(self.root, self, C)
@@ -586,10 +576,6 @@ class App:
         # when Windows uses a larger text scale.
         scale = max(1.0, float(self.root.tk.call("tk", "scaling")) / 1.33)
         self.sidebar.set_compact(event.width < round(1160 * scale))
-        small_badge = event.width < round(1080 * scale)
-        if small_badge != getattr(self, '_small_badge', None):
-            self._small_badge = small_badge
-            self.brand_caption.pack_forget() if small_badge else self.brand_caption.pack(side=tk.LEFT, padx=(5, 0))
         threshold = round(700 * scale)
         if self._compact_mode is not None:
             threshold += round(24 * scale) if self._compact_mode else -round(24 * scale)
@@ -1008,7 +994,8 @@ class App:
             # Keep the existing typed convenience references for shortcuts.
             alias = ('sql' if mode in SQL_MODES else 'postgres' if mode in PG_MODES else 'services' if mode in SERVICE_MODES else
                      {'accounts': 'accounts', 'jr_archive': 'archive', 'cluster_infobase': 'cluster_infobase',
-                      'db_copy': 'sql_copy', 'pg_copy': 'postgres_copy', 'platform_install': 'platform_install', 'windirstat': 'windirstat'}.get(mode))
+                      'db_copy': 'sql_copy', 'pg_copy': 'postgres_copy', 'platform_install': 'platform_install', 'windirstat': 'windirstat',
+                      'web_publication':'web_publication','file_transfer':'file_transfer'}.get(mode))
             if alias:
                 setattr(self, alias, panel)
             if hasattr(panel, 'show_mode') and not panel.running:
@@ -1020,7 +1007,7 @@ class App:
                 widget.pack(**layout)
             self.btn_pick.pack(side=tk.RIGHT, padx=(8, 0))
             self.btn_local.pack(side=tk.RIGHT)
-            self.btn_update.pack(side=tk.RIGHT, before=self.bookmarks)
+            self.btn_update.pack(side=tk.RIGHT, before=self.favorites_button)
         if mode in TABLES:
             self._active_panel = None
         self._active_tab_key = key
@@ -1035,6 +1022,8 @@ class App:
                       'scheduler': 'Последовательности по расписанию и журнал запусков · фоновый исполнитель работает отдельно от окна консоли',
                       'platform_install': 'Войдите в ИТС, выберите версию и дистрибутив Windows или Linux',
                       'configuration_install': 'Типовые российские конфигурации 1С · setup на этом компьютере, база в выбранном кластере',
+                      'web_publication':'Публикация 1С и управление IIS / Apache · локально Windows, удалённо WinRM / SSH',
+                      'file_transfer':'Windows ↔ Windows / Linux · источник не удаляется, передача выполняется в фоне',
                       'home': 'Избранное, последние базы и история операций', "servers": "Список серверов",
                       "bases": "Обновите список баз или отфильтруйте загруженные данные",
                       "accounts": "Введите ФИО сотрудников. Создание выполняется на этом компьютере.",
@@ -1145,6 +1134,8 @@ class App:
             if self.mode == 'configuration_install':
                 panel.load_catalog()
                 return
+            if self.mode=='web_publication':panel.inspect();return
+            if self.mode=='file_transfer':panel.list_source();return
             if (panel, 'source') in self.hub.refresh_buttons:
                 role = 'source'
                 focused = self.root.focus_get()

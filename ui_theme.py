@@ -97,78 +97,34 @@ def apply_styles(root, colors):
 
 
 class WorkspaceSidebar(tk.Frame):
-    """Shortcuts coexist with user bookmarks; never lock while a task runs."""
+    """A compact host for the user's actual bookmark folders and tabs."""
     def __init__(self, parent, app, colors, version):
-        super().__init__(parent, bg=colors['rail'], width=170)
+        super().__init__(parent, bg=colors['rail'], width=176)
         self.app, self.c, self.compact = app, colors, None
         self.version_text = 'КА · ' + version
         self.pack_propagate(False)
-        self.buttons, self.labels = {}, []
         self.brand = tk.Label(self, text='КА', bg=colors['accent'], fg='#ffffff',
-                              font=('Segoe UI', 18, 'bold'), padx=10, pady=6, cursor='hand2')
-        self.brand.pack(anchor='w', padx=14, pady=(16, 5))
+                              font=('Segoe UI', 14, 'bold'), padx=8, pady=4, cursor='hand2')
+        self.brand.pack(anchor='w', padx=12, pady=(12, 10))
         self.brand.bind('<Button-1>', lambda event: app._switch_mode('home'))
-        self.caption = tk.Label(self, text='Консоль администратора', bg=colors['rail'],
-                                fg=colors['muted'], font=('Segoe UI', 8))
-        self.caption.pack(anchor='w', padx=14, pady=(0, 18))
-        self.menu = tk.Frame(self, bg=colors['rail'])
-        self.menu.pack(fill=tk.X, padx=9)
-        entries = (
-            ('ОБЗОР', None, None), ('Главная', '⌂', 'home'),
-            ('ИНСТРУМЕНТЫ', None, None), ('Базы 1С', '1С', 'bases'),
-            ('SQL Server', 'MS', 'db_backup'), ('PostgreSQL', 'PG', 'pg_dump'),
-            ('Windows', 'W', 'service_create'), ('Linux', 'LX', 'linux_disk'),
-            ('Планировщик', '◷', 'scheduler'),
-        )
-        for title, icon, mode in entries:
-            if mode is None:
-                label = tk.Label(self.menu, text=title, font=('Segoe UI', 8, 'bold'),
-                                 bg=colors['rail'], fg=colors['muted'], anchor='w')
-                label.pack(fill=tk.X, padx=9, pady=(15, 8))
-                self.labels.append(label)
-                continue
-            button = tk.Button(self.menu, text=icon+'   '+title, command=lambda m=mode: app._switch_mode(m),
-                               font=('Segoe UI', 10), anchor='w', relief='flat', bd=0,
-                               bg=colors['rail'], fg=colors['muted'], activebackground=colors['selected'],
-                               activeforeground=colors['accent'], cursor='hand2', padx=10, pady=9,
-                               takefocus=True)
-            button.pack(fill=tk.X, pady=3)
-            button.title, button.symbol = title, icon
-            self.buttons[mode] = button
+        self.home = app._button(self, '⌂  Главная', lambda: app._switch_mode('home'))
+        self.home.configure(font=('Segoe UI', 9), anchor='w', pady=4, padx=8)
+        self.home.pack(fill=tk.X, padx=9, pady=(0, 10))
+        tk.Label(self, text='РАЗДЕЛЫ', bg=colors['rail'], fg=colors['muted'],
+                 font=('Segoe UI', 8, 'bold'), anchor='w').pack(fill=tk.X, padx=15, pady=(0, 7))
         self.version = tk.Label(self, text='КА · '+version, bg=colors['rail'], fg=colors['muted'],
                                 font=('Segoe UI', 8), anchor='w')
-        self.version.pack(side=tk.BOTTOM, fill=tk.X, padx=15, pady=16)
+        self.version.pack(side=tk.BOTTOM, fill=tk.X, padx=12, pady=10)
+        self.folder_host = tk.Frame(self, bg=colors['rail'])
+        self.folder_host.pack(fill=tk.BOTH, expand=True, padx=7, pady=(0, 5))
         self.set_compact(False)
 
     def set_compact(self, compact):
         if compact == self.compact:
             return
         self.compact = compact
-        self.configure(width=62 if compact else 170)
-        self.brand.configure(font=('Segoe UI', 13 if compact else 18, 'bold'), padx=6 if compact else 10)
-        if compact:
-            self.caption.pack_forget()
-            self.version.configure(text='КА', anchor='center')
-        else:
-            self.caption.pack(anchor='w', padx=14, pady=(0, 18), before=self.menu)
-            self.version.configure(text=self.version_text, anchor='w')
-        for label in self.labels:
-            label.configure(text='—' if compact else ('ОБЗОР' if label is self.labels[0] else 'ИНСТРУМЕНТЫ'))
-        for button in self.buttons.values():
-            button.configure(text=button.symbol if compact else button.symbol+'   '+button.title,
-                             anchor='center' if compact else 'w', padx=2 if compact else 10)
+        self.configure(width=152 if compact else 176)
 
     def set_active(self, mode):
-        if mode.startswith('pg_') or mode.startswith('ibcmd_') or mode == 'postgres_install':
-            active = 'pg_dump'
-        elif mode.startswith('db_'):
-            active = 'db_backup'
-        elif mode.startswith('service_') or mode in ('accounts', 'windirstat'):
-            active = 'service_create'
-        elif mode in ('servers', 'bases', 'cluster_infobase', 'platform_install', 'configuration_install', 'jr_archive'):
-            active = 'bases'
-        else:
-            active = mode
-        for key, button in self.buttons.items():
-            button.configure(bg=self.c['accent'] if key == active else self.c['rail'],
-                             fg='#ffffff' if key == active else self.c['muted'])
+        self.home._base_bg = self.c['selected'] if mode == 'home' else self.c['button']
+        self.home.configure(bg=self.home._base_bg, fg=self.c['accent'] if mode == 'home' else self.c['fg'])

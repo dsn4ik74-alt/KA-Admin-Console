@@ -391,6 +391,7 @@ class PostgresPanel(JobPanel):
         self.update_execution_note()
 
     def set_compact(self, compact):
+        super().set_compact(compact)
         self.selection_note.grid_remove() if compact else self.selection_note.grid()
 
     def selected(self):

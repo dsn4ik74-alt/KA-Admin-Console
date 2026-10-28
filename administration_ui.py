@@ -91,7 +91,13 @@ class JobPanel(tk.Frame):
         self.right.columnconfigure(0, weight=1)
 
     def set_compact(self, compact):
-        pass
+        self._compact_actions=compact
+        if not self.running or not self.cancel_event.is_set():
+            self.cancel_button.configure(text='Прервать' if compact else 'Прервать запрос')
+        for widget in self.actions.winfo_children():
+            if isinstance(widget,tk.Button):
+                if not hasattr(widget,'_regular_padx'):widget._regular_padx=int(widget.cget('padx'))
+                widget.configure(padx=min(5,widget._regular_padx) if compact else widget._regular_padx)
 
     def _bind_wheel(self, canvas, widget):
         def scroll_form(event):
@@ -213,7 +219,7 @@ class JobPanel(tk.Frame):
         self.progress_state.start()
         self.cancel_event.clear()
         if self.cancellable:
-            self.cancel_button.configure(state=tk.NORMAL, text='Прервать запрос')
+            self.cancel_button.configure(state=tk.NORMAL, text='Прервать' if getattr(self,'_compact_actions',False) else 'Прервать запрос')
         for widget in (*self.inputs, self.execute_button, self.clear_button):
             widget.configure(state=tk.DISABLED)
         self.app._set_busy()
@@ -325,6 +331,8 @@ class JobPanel(tk.Frame):
             for name in ('password','target_password','ib_password','db_password','ssh_password','sudo_password','pwd_var','its_password','service_password'):
                 variable=getattr(owner,name,None)
                 if isinstance(variable,tk.Variable):secrets.append(variable.get())
+        if hasattr(self, 'secret_values'):
+            secrets.extend(self.secret_values())
         journal = self.app.activity.logs.writer(token[0],secrets) if token else None
         def on_event(event):
             if token and event.get('kind') == 'artifact':
@@ -386,7 +394,7 @@ class JobPanel(tk.Frame):
         if self._progress_job is not None:
             self.after_cancel(self._progress_job)
             self._progress_job = None
-        self.cancel_button.configure(state=tk.DISABLED, text='Прервать запрос')
+        self.cancel_button.configure(state=tk.DISABLED, text='Прервать' if getattr(self,'_compact_actions',False) else 'Прервать запрос')
         for widget in (*self.inputs, self.execute_button, self.clear_button):
             widget.configure(state=tk.NORMAL)
         complete = not error and (self.progress_state.complete_task or self.progress_state.measured)
@@ -645,6 +653,7 @@ class SqlPanel(JobPanel):
         self.selected_label.configure(text='Выбрана база: ' + database if database else 'Выберите базу в списке')
 
     def set_compact(self, compact):
+        super().set_compact(compact)
         self._compact = compact
         self._resize_summary()
 
