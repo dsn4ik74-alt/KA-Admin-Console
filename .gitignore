@@ -1,0 +1,47 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated releases, diagnostics and rollback copies
+/dist/
+/build/*
+!/build/run_tests.py
+/rollback/
+/vendor/
+*.lnk
+*.bak
+*.log
+
+# Credentials, local configuration and database files
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+*.ppk
+id_rsa*
+id_ed25519*
+.1c_*
+*.bak.*
+*.dump
+*.dt
+*.mdf
+*.ldf
+*.sql.gz
+
+# Local editor settings
+.idea/
+.vscode/
+.codex/
+.agents/
+Thumbs.db
+Desktop.ini
