@@ -6,14 +6,17 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.20-3861d9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.20)
-[![ОС](https://img.shields.io/badge/Windows-x64-2563eb?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.20)
+[![Версия](https://img.shields.io/badge/версия-20.33.21-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.21)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.21)
 
-[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.20-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.20/KA-Admin-Console-20.33.20.exe)
+[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.21-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.21/KA-Admin-Console-20.33.21.exe)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
 </div>
+
+![Главная страница консоли](assets/overview.png)
+*Пример интерфейса с демонстрационными данными.*
 
 ## Начать работу
 
@@ -34,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.21** — новый светлый интерфейс: боковая панель быстрых переходов, белые карточки главной, фиолетовые акценты, обновлённые таблицы и формы. Боковая панель сворачивается при сужении окна; ваши папки и вкладки остаются сверху.
 
 **20.33.20** — на вкладке «Шаблоны» основная кнопка **«Добавить базу на сервер»** сразу открывает параметры загрузки выбранной конфигурации.
 

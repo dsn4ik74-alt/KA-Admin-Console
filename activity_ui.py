@@ -11,6 +11,7 @@ from sql_server import format_size
 from table_sorting import TableSorter
 from log_colors import configure_log, insert_log
 from ui_geometry import delayed_wrap
+from ui_theme import RoundedSurface
 
 
 class OperationLogWindow(tk.Toplevel):
@@ -437,9 +438,30 @@ class HomePanel(tk.Frame):
         self.bind('<Destroy>',self.destroyed,add='+')
         quick = tk.Frame(self, bg=app.colors['bg'])
         quick.pack(fill=tk.X, padx=22, pady=(0, 10))
-        app._label(quick, 'Главная', 13, bold=True).pack(side=tk.LEFT, padx=(0, 18))
+        app._label(quick, 'Рабочий обзор', 18, bold=True).pack(side=tk.LEFT, padx=(0, 18))
         for title, mode in (('SQL Server', 'db_backup'), ('PostgreSQL', 'pg_dump'), ('Кластер 1С', 'cluster_infobase')):
-            app._button(quick, title, lambda page=mode: app._switch_mode(page)).pack(side=tk.LEFT, padx=(0, 6))
+            app._button(quick, title, lambda page=mode: app._switch_mode(page)).pack(side=tk.RIGHT, padx=(6, 0))
+        self.metrics = {}
+        self.metric_strip = tk.Frame(self, bg=app.colors['bg'])
+        self.metric_strip.pack(fill=tk.X, padx=22, pady=(3, 16))
+        for column, (key, title, symbol, color, background) in enumerate((
+                ('favorites', 'Подключения', '☆', app.colors['accent'], app.colors['selected']),
+                ('running', 'Активные задачи', '↗', '#149b79', '#e5f6ef'),
+                ('today', 'Операции сегодня', '≡', '#326dd5', '#e9f0ff'),
+                ('errors', 'Требуют внимания', '!', '#ce465f', '#ffedf1'))):
+            self.metric_strip.columnconfigure(column, weight=1, uniform='metrics')
+            surface = RoundedSurface(self.metric_strip, app.colors, padding=14, fit_height=True)
+            surface.grid(row=0, column=column, sticky='nsew', padx=(0, 10) if column < 3 else 0)
+            card = surface.body
+            icon = tk.Label(card, text=symbol, font=('Segoe UI', 17, 'bold'),
+                            bg=background, fg=color, width=2, padx=3, pady=2)
+            icon.pack(side=tk.LEFT, padx=(0, 12))
+            info = tk.Frame(card, bg=app.colors['panel'])
+            info.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            app._label(info, title, 9, 'muted', anchor='w').pack(fill=tk.X)
+            value = app._label(info, '0', 22, bold=True, anchor='w')
+            value.pack(fill=tk.X)
+            self.metrics[key] = value
         split = tk.PanedWindow(self, orient=tk.VERTICAL, bg=app.colors['border'], bd=0, sashwidth=7, opaqueresize=False)
         split.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
         top = tk.Frame(split, bg=app.colors['bg'])
@@ -450,16 +472,18 @@ class HomePanel(tk.Frame):
         for column, (section, title, columns) in enumerate((
                 ('favorites', 'Избранные подключения', [('name', 'Подключение', 180), ('server', 'Сервер', 180)]),
                 ('recent', 'Последние выбранные базы', [('name', 'База', 180), ('server', 'Сервер', 160)]))):
-            card = tk.Frame(top, bg=app.colors['panel'], padx=10, pady=8)
-            card.grid(row=0, column=column, sticky='nsew', padx=(0, 6) if column == 0 else (6, 0))
+            surface = RoundedSurface(top, app.colors)
+            surface.grid(row=0, column=column, sticky='nsew', padx=(0, 6) if column == 0 else (6, 0))
+            card = surface.body
             app._label(card, title, 11, bold=True).pack(anchor=tk.W, pady=(0, 6))
             tree = self.make_table(card, columns, height=5)
             tree.bind('<Double-1>', lambda event, s=section: self.open_row(s))
             tree.bind('<Return>', lambda event, s=section: self.open_row(s))
             tree.bind('<<TreeviewSelect>>', lambda event: self.update_details())
             self.tables[section] = tree
-        bottom = tk.Frame(split, bg=app.colors['panel'], padx=10, pady=8)
-        split.add(bottom, minsize=100, height=240, stretch='always')
+        surface = RoundedSurface(split, app.colors)
+        split.add(surface, minsize=100, height=240, stretch='always')
+        bottom = surface.body
         header = tk.Frame(bottom, bg=app.colors['panel'])
         header.pack(fill=tk.X)
         app._label(header, 'Последние операции', 11, bold=True).pack(side=tk.LEFT)
@@ -494,6 +518,8 @@ class HomePanel(tk.Frame):
         horizontal = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=tree.xview)
         horizontal.grid(row=1, column=0, sticky='ew')
         tree.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        tree.tag_configure('even', background=self.app.colors['panel'])
+        tree.tag_configure('odd', background=self.app.colors['row'])
         return tree
 
     def show_mode(self, mode):
@@ -543,6 +569,7 @@ class HomePanel(tk.Frame):
 
     def refresh(self):
         self.load_scheduled()
+        self.refresh_metrics()
         if self._revision == self.app.activity.revision:
             return
         self._revision = self.app.activity.revision
@@ -558,9 +585,25 @@ class HomePanel(tk.Frame):
                 else:
                     profile = row if section == 'favorites' else row['profile']
                     values = (row['name'] if section == 'favorites' else row['database'], endpoint(profile, row.get('role', 'source')))
-                tree.insert('', tk.END, iid=str(index), values=values)
+                tree.insert('', tk.END, iid=str(index), values=values, tags=('odd' if index % 2 else 'even',))
             if not rows:
                 tree.insert('', tk.END, iid='empty', values=('Пока нет записей',))
+
+    def refresh_metrics(self):
+        # The store supplies bounded metadata snapshots, never database queries.
+        history = self.app.activity.snapshot('history') + self._scheduled
+        today = datetime.now().astimezone().date().isoformat()
+        recent = [row for row in history if row.get('started', '')[:10] == today]
+        pages = set(getattr(self.app, '_pages', {}).values())
+        running = sum(bool(getattr(panel, 'running', False)) for panel in pages)
+        scheduler = getattr(self.app, 'scheduler', None)
+        running += bool(scheduler and scheduler.active_task)
+        values = dict(favorites=len(self.app.activity.snapshot('favorites')), running=running,
+                      today=len(recent), errors=sum('ошиб' in row.get('status', '').casefold() for row in recent))
+        for key, value in values.items():
+            text = str(value)
+            if self.metrics[key].cget('text') != text:
+                self.metrics[key].configure(text=text)
 
     def open_row(self, section):
         selection = self.tables[section].selection()
@@ -598,6 +641,10 @@ class HomePanel(tk.Frame):
 
     def set_compact(self, compact):
         self.detail.pack_forget() if compact else self.detail.pack(fill=tk.X, padx=22, pady=(0, 8))
+        if compact:
+            self.metric_strip.pack_forget()
+        elif not self.metric_strip.winfo_manager():
+            self.metric_strip.pack(fill=tk.X, padx=22, pady=(3, 16), after=self.winfo_children()[0])
 
 
 class ActivityDialog(tk.Toplevel):

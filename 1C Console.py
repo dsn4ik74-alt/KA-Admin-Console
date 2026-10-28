@@ -44,18 +44,16 @@ from database_sizes import DatabaseSizes
 from scheduler_ui import SchedulerPanel, install_schedule_button
 from infobase_launcher import prepare_client, start_client
 from infobase_address import infobase_address
+from ui_theme import COLORS, WorkspaceSidebar, apply_styles
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.20"
+APP_VERSION = "20.33.21"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
 _CACHE_KEY = b"1CMMC2024!secret"
-C = {"bg": "#f5f7fc", "panel": "#ffffff", "row": "#f8faff", "border": "#dce4f1",
-     "fg": "#1e293b", "muted": "#59687e", "accent": "#3861d9", "hover": "#284cc0",
-     "accent_fg": "#ffffff", "button": "#edf2fa", "button_hover": "#dee7f7", "selected": "#e5edff",
-     "danger": "#c33d50", "danger_hover": "#a82f41"}
+C = COLORS
 COLUMNS = ("server", "port", "version", "descr", "base", "cluster", "address")
 TABLES = {
     "servers": [("server", "Сервер", 240), ("port", "Порт", 90),
@@ -150,7 +148,7 @@ class App:
         self.root.report_callback_exception = self._report_callback_exception
         install_edit_shortcuts(self.root)
         self.root.title(f"{APP_NAME} · {APP_VERSION}")
-        self.root.geometry("1380x820")
+        self.root.geometry("1480x880")
         self.root.minsize(960, 540)
         self.root.configure(bg=C["bg"])
         self.colors = C
@@ -241,7 +239,8 @@ class App:
                            bg=bg, fg=C["accent_fg"] if primary else C["fg"], activebackground=hover,
                            activeforeground=C["accent_fg"] if primary else C["fg"],
                            disabledforeground='#d5dffa' if primary else C["muted"],
-                           relief="flat", bd=0, cursor="hand2", padx=10, pady=5)
+                           relief="flat", bd=0, cursor="hand2", padx=12, pady=7,
+                           highlightthickness=1, highlightbackground=bg, highlightcolor=C['accent'])
         button._base_bg = bg
         button._hover_bg = hover
         button.bind("<Enter>", lambda event: button.configure(bg=button._hover_bg) if button.cget("state") != "disabled" else None)
@@ -258,6 +257,8 @@ class App:
         return widget
 
     def _build_ui(self):
+        self.sidebar = WorkspaceSidebar(self.root, self, C, APP_VERSION)
+        self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
         # Pack the footer first: Tk reserves it before shrinking the content.
         footer = tk.Frame(self.root, bg=C["panel"], padx=20, pady=10)
         footer.pack(fill=tk.X, side=tk.BOTTOM)
@@ -269,13 +270,13 @@ class App:
         delayed_wrap(self.lst_lbl, minimum=200, inset=8)
 
         navigation = tk.Frame(self.root, bg=C["bg"])
-        navigation.pack(fill=tk.X, padx=14, pady=(8, 6), before=source)
+        navigation.pack(fill=tk.X, padx=18, pady=(14, 10), before=source)
         brand = tk.Frame(navigation, bg=C['panel'], padx=6, pady=3,
                          highlightthickness=1, highlightbackground=C['border'], cursor='hand2')
         brand.pack(side=tk.LEFT, padx=(0, 10))
         icon = tk.Label(brand, image=self._app_icon, bg=C['panel'], cursor='hand2')
         icon.pack(side=tk.LEFT)
-        caption = self._label(brand, 'Консоль администратора КА', 9)
+        caption = self._label(brand, 'Консоль КА', 9, bold=True)
         caption.configure(cursor='hand2')
         caption.pack(side=tk.LEFT, padx=(5, 0))
         self.brand_caption = caption
@@ -423,30 +424,7 @@ class App:
         self.scheduler.start_monitor()
 
     def _apply_theme(self):
-        style = ttk.Style(self.root)
-        style.theme_use("clam")
-        row_height = max(28, round(23 * float(self.root.tk.call('tk', 'scaling')) / 1.33))
-        style.configure("Treeview", font=("Segoe UI", 10), rowheight=row_height, background=C["panel"],
-                        foreground=C["fg"], fieldbackground=C["panel"], borderwidth=0,
-                        bordercolor=C["border"], lightcolor=C["panel"], darkcolor=C["panel"])
-        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"), background=C["button"],
-                        foreground=C["fg"], relief="flat", padding=(8, 6))
-        style.configure('Copy.Treeview', font=('Segoe UI', 10), rowheight=row_height)
-        style.configure('Copy.Treeview.Heading', font=('Segoe UI', 9, 'bold'), padding=(6, 5))
-        style.map("Treeview", background=[("selected", C["selected"])], foreground=[("selected", C["fg"])])
-        style.map("Treeview.Heading", background=[("active", C["button_hover"])])
-        for orientation in ("Vertical", "Horizontal"):
-            style.configure(f"{orientation}.TScrollbar", background=C["button"], troughcolor=C["panel"],
-                            bordercolor=C["panel"], arrowcolor=C["muted"], relief="flat",
-                            lightcolor=C["button"], darkcolor=C["button"], arrowsize=12)
-            style.map(f"{orientation}.TScrollbar", background=[("active", C["button_hover"])])
-        style.configure("TProgressbar", background=C["accent"], troughcolor=C["bg"], borderwidth=0,
-                        bordercolor=C["bg"], lightcolor=C["accent"], darkcolor=C["accent"])
-        style.configure("TCombobox", fieldbackground=C["bg"], background=C["button"], foreground=C["fg"],
-                        arrowcolor=C["muted"], bordercolor=C["border"], lightcolor=C["bg"], darkcolor=C["bg"])
-        style.map("TCombobox", fieldbackground=[("readonly", C["bg"])], foreground=[("readonly", C["fg"])])
-        self.root.option_add("*TCombobox*Listbox.background", C["panel"])
-        self.root.option_add("*TCombobox*Listbox.foreground", C["fg"])
+        apply_styles(self.root, C)
         self.tree.tag_configure("even", background=C["panel"])
         self.tree.tag_configure("odd", background=C["row"])
 
@@ -520,6 +498,7 @@ class App:
         for key, job in self._opening_bases.items():
             tasks.append((('open-base', key), 'Открытие: ' + job['row']['base'], lambda: self._switch_mode('bases')))
         self.running_tasks.update_tasks(tasks)
+        self.sidebar.set_active(self.mode)
 
     def _can_close_tab(self, key):
         node = self.bookmarks.layout.find(key)
@@ -606,6 +585,7 @@ class App:
         # Tk measures fonts in points, so reserve proportionally more height
         # when Windows uses a larger text scale.
         scale = max(1.0, float(self.root.tk.call("tk", "scaling")) / 1.33)
+        self.sidebar.set_compact(event.width < round(1160 * scale))
         small_badge = event.width < round(1080 * scale)
         if small_badge != getattr(self, '_small_badge', None):
             self._small_badge = small_badge

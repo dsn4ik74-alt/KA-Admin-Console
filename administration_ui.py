@@ -49,7 +49,7 @@ class JobPanel(tk.Frame):
         self.bind('<Destroy>', self._progress_destroyed, add='+')
         self.inputs = []
         # Reserve actions before allocating any variable-height content.
-        self.actions = tk.Frame(self, bg=colors['panel'], padx=16, pady=10,
+        self.actions = tk.Frame(self, bg=colors['panel'], padx=16, pady=12,
                                 highlightthickness=1, highlightbackground=colors['border'])
         self.actions.pack(side=tk.BOTTOM, fill=tk.X, padx=22, pady=(0, 12))
         self.execute_button = app._button(self.actions, action, self.execute, primary=True)
@@ -62,8 +62,8 @@ class JobPanel(tk.Frame):
         self.cancel_button.configure(state=tk.DISABLED)
         self.state_label = app._label(self.actions, 'Готово', 9, 'muted', anchor=tk.W)
         self.state_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.title = app._label(self, title, 15, bold=True, anchor=tk.W)
-        self.title.pack(fill=tk.X, padx=22, pady=(0, 10))
+        self.title = app._label(self, title, 17, bold=True, anchor=tk.W)
+        self.title.pack(fill=tk.X, padx=22, pady=(2, 14))
         body = tk.Frame(self, bg=colors['bg'])
         body.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
         body.columnconfigure(0, weight=1, minsize=290)
