@@ -6,8 +6,8 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-![Версия](https://img.shields.io/badge/версия-20.33.20-3861d9?style=for-the-badge)
-![ОС](https://img.shields.io/badge/Windows-x64-2563eb?style=for-the-badge)
+[![Версия](https://img.shields.io/badge/версия-20.33.20-3861d9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.20)
+[![ОС](https://img.shields.io/badge/Windows-x64-2563eb?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.20)
 
 [![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.20-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.20/KA-Admin-Console-20.33.20.exe)
 
