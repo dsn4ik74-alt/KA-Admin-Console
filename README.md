@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.23-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.23)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.23)
+[![Версия](https://img.shields.io/badge/версия-20.33.24-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.24)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.24)
 
-[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.23-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.23/KA-Admin-Console-20.33.23.exe)
+[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.24-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.24/KA-Admin-Console-20.33.24.exe)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,11 +38,20 @@
 
 ## Что изменилось
 
+**20.33.24** — кнопка **«Проверить SSH»** отдельно у источника и получателя передачи файлов. Успешное подключение сохраняется в списке Linux-серверов. Перед установкой PostgreSQL можно настроить `pg_hba.conf` понятными правилами: базы, пользователи, IP/подсети, разрешения и запреты, порядок проверки и SSL; рядом виден итоговый файл.
+
 **20.33.23** — публикация ИБ на IIS/Apache, управление сайтами, пулами и привязками IIS, редактор конфигураций с резервными копиями. Передача файлов Windows ↔ Windows, Windows ↔ Linux и Linux ↔ Linux; инструкции по включению WinRM, SMB и SSH. Исправлен поиск библиотек PostgreSQL при установке бинарного комплекта Linux в выбранную папку; добавлены проверка запуска утилит и повторное использование совпадающего комплекта после сбоя.
 
 **20.33.22** — разделы и вложенные вкладки перенесены в компактную боковую панель: раскрытие при наведении, перетаскивание, добавление своих разделов и вкладок.
 
 **20.33.21** — светлый интерфейс, карточки главной, фиолетовые акценты и обновлённые таблицы и формы.
+
+<details>
+<summary>Настройка доступа PostgreSQL перед установкой</summary>
+
+![Редактор правил pg_hba.conf](assets/access-rules.png)
+
+</details>
 
 ---
 

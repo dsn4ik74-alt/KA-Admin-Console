@@ -13,6 +13,7 @@ from install_workspace import _create_private_workspace, cleanup_workspace
 from local_ras import decode_output
 from platform_install import Msi, InstallProgress, _MSI_LOCK, property_value, unpack_distribution
 from postgres_runner import OperationCancelled
+from postgres_access import rules as access_rules, configuration as access_configuration, write_configuration
 
 
 def validate(values, linux=False):
@@ -36,11 +37,12 @@ def validate(values, linux=False):
     if values.get('listen') not in ('*', 'localhost', '127.0.0.1'):
         raise ValueError('Адреса прослушивания: *, localhost или 127.0.0.1')
     try:
-        networks = values.get('networks', '')
+        networks = values.get('networks', '') if values.get('access_rules') is None else ''
         if isinstance(networks, list): networks = ','.join(networks)
         result['networks'] = [str(ipaddress.ip_network(v.strip(), strict=False)) for v in networks.split(',') if v.strip()]
     except ValueError:
         raise ValueError('Укажите сети в формате CIDR, например 192.168.20.0/24') from None
+    result['access_rules']=access_rules(values.get('access_rules'))
     for key in ('data', 'prefix'):
         value = values.get(key, '').strip()
         if not value or any(c in value for c in '\x00\r\n'):
@@ -213,13 +215,12 @@ def install_windows(archive, row, config, event, cancel):
     data = Path(config['data']); conf = data/'postgresql.conf'; hba = data/'pg_hba.conf'
     if not (data/'PG_VERSION').is_file() or not conf.is_file() or not hba.is_file():
         raise RuntimeError('MSI завершился, но экземпляр в выбранном каталоге не подтверждён: '+str(data))
+    with open_service(config['name']) as service:service.ensure_stopped()
     with conf.open('a', encoding='utf-8') as stream:
         stream.write("\n# KA installation\nlisten_addresses = '"+config['listen']+"'\n")
-    auth = 'scram-sha-256' if int(row['version'].split('.')[0]) >= 10 else 'md5'
-    with hba.open('a', encoding='utf-8') as stream:
-        for network in config['networks']: stream.write('host all all '+network+' '+auth+'\n')
+    backup=write_configuration(hba,config,row['version'])
+    event(dict(kind='message',text='Настроен pg_hba.conf; исходный файл: '+str(backup)))
     # Only the newly installed service is restarted. Existing instances are untouched.
-    with open_service(config['name']) as service:service.ensure_stopped()
     native(['sc.exe', 'start', config['name']], event)
     psql = Path(config['prefix'])/'bin'/'psql.exe'
     env = dict(os.environ, PGPASSWORD=config['password'], PGCLIENTENCODING='UTF8', PGCONNECT_TIMEOUT='2')
@@ -241,6 +242,7 @@ def install_windows(archive, row, config, event, cancel):
 def install(portal, row, values, folder, event, cancel, connection=None):
     linux = connection is not None
     config = validate(values, linux=linux)
+    access_configuration(config,row['version'],linux)
     if linux == (row.get('os') == 'windows'): raise ValueError('Дистрибутив не соответствует выбранному режиму установки')
     if not re.fullmatch(r'\d[\w.-]{1,45}', row.get('version', '')): raise ValueError('Некорректная версия PostgreSQL')
     if not folder or not Path(folder).is_absolute(): raise ValueError('Укажите абсолютную временную папку дистрибутива на компьютере консоли')

@@ -38,7 +38,9 @@ def run_script(module,values,payload,event,cancel,files=(),elevate=False):
                     if done==total or now-last_progress[0]>.3:
                         event(dict(kind='progress',percent=done/max(1,total)*100,phase='Передача на Linux',unit='передачи'));last_progress[0]=now
                 sftp.put(runtime['path'],root+'/runtime.tar.gz',callback=progress,confirm=True)
-                for source,name in ((source_root/'ssh_job_runner.py','runner.py'),(source_root/(module+'.py'),'task.py')):
+                sources=[(source_root/'ssh_job_runner.py','runner.py'),(source_root/(module+'.py'),'task.py')]
+                if module=='postgres_install_linux':sources.append((source_root/'postgres_access.py','postgres_access.py'))
+                for source,name in sources:
                     sftp.put(str(source),root+'/'+name,confirm=True)
                 manifests=[]
                 for index,source in enumerate(files):

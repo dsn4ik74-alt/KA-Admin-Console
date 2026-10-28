@@ -34,6 +34,7 @@ a = Analysis(
     datas=[('create_users.ps1', '.'), ('archive_jr.ps1', '.'), ('postgres_runner.py', '.'), ('linux_platform_runner.py', '.'),
            ('ssh_job_runner.py','.'),('linux_disk_scan.py','.'),('linux_disk_delete.py','.'),('postgres_install_linux.py','.'),
            ('web_publication_linux.py','.'),('web_publication_windows.ps1','.'),
+           ('postgres_access.py','.'),
            ('vendor/efd-format/LICENSE.txt','vendor/efd-format')] + pg_data,
     hiddenimports=[],
     hookspath=[],

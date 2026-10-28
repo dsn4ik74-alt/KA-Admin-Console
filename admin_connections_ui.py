@@ -2,7 +2,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from ssh_connection import UnknownHostKey
+from ssh_connection import probe, UnknownHostKey
 from clipboard_shortcuts import bind_entry_shortcuts
 
 
@@ -89,6 +89,7 @@ class EndpointFields:
     TYPES = {'Этот компьютер': 'local', 'Windows · SMB': 'windows', 'Linux · SSH': 'linux'}
     def __init__(self, panel, title, path):
         self.panel = panel
+        self.title = title
         self.frame = tk.Frame(panel.form,bg=panel.c['panel'],padx=10,pady=8,
                               highlightthickness=1,highlightbackground=panel.c['border'])
         self.frame.pack(fill=tk.X, pady=(5, 12))
@@ -126,6 +127,9 @@ class EndpointFields:
                                        bg=panel.c['panel'], fg=panel.c['fg'], bd=0, highlightthickness=0)
         self.key_check.pack(anchor='w', pady=(6, 0),before=self.key_group); panel.inputs.append(self.key_check)
         self.ssh_widgets.append(self.key_check)
+        self.probe_button=panel.app._button(self.ssh_group,'Проверить SSH',self.check_ssh)
+        self.probe_button.pack(fill=tk.X,pady=(8,0))
+        panel.inputs.append(self.probe_button);self.ssh_widgets.append(self.probe_button)
         self.path_group=tk.Frame(self.frame,bg=panel.c['panel']);self.path_group.pack(fill=tk.X)
         panel.app._label(self.path_group, 'Путь · источник — файл или папка; получатель — папка', 9, 'muted',wraplength=300,justify='left').pack(anchor='w', pady=(8, 3))
         entry = panel.app._entry(self.path_group, self.path); entry.pack(fill=tk.X); panel.inputs.append(entry)
@@ -144,7 +148,7 @@ class EndpointFields:
         if remote:self.remote_group.pack(fill=tk.X,before=self.path_group)
         if linux:self.ssh_group.pack(fill=tk.X,before=self.path_group)
         self.key_group.pack_forget()
-        if self.use_key.get():self.key_group.pack(fill=tk.X)
+        if self.use_key.get():self.key_group.pack(fill=tk.X,before=self.probe_button)
         for widgets, enabled in ((self.remote_widgets, remote), (self.ssh_widgets, linux)):
             for widget in widgets:
                 widget.configure(state=tk.NORMAL if enabled and not self.panel.running else tk.DISABLED)
@@ -176,6 +180,18 @@ class EndpointFields:
     def remember(self):
         if self.kind.get()=='Linux · SSH':
             self.panel.app.saved_servers.remember_ssh(self.panel,self.values())
+
+    def check_ssh(self):
+        if self.panel.running or self.kind.get()!='Linux · SSH':
+            return
+        values=self.values()
+        def ready(result):
+            self.panel.app.saved_servers.remember_ssh(self.panel,values)
+            address=values['user']+'@'+values['host']+':'+str(values['port'])
+            self.panel.append(self.title+' · SSH подключение успешно: '+address)
+            self.panel.append(result['description'])
+            self.panel.finish(self.title+' · Проверка SSH завершена')
+        with_ssh_trust(self.panel,lambda event:probe(values),ready,self.check_ssh)
 
     def choose_folder(self):
         if self.kind.get() == 'Linux · SSH':

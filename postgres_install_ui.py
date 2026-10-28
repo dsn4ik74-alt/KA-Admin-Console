@@ -33,7 +33,13 @@ class PostgresInstallPanel(SshFields,JobPanel):
         self.service_note.pack(fill=tk.X,pady=(3,0));self.field('Порт PostgreSQL',self.port)
         self.field('Пароль администратора postgres',self.pg_password,show='•');self.field('Локаль экземпляра',self.locale)
         self.listen_choice=self.choice('Адреса прослушивания',self.listen,('*','localhost','127.0.0.1'))
-        self.field('Разрешённые сети · через запятую',self.networks)
+        self.networks_entry=self.field('Быстрый доступ · IP/подсети через запятую',self.networks)
+        self.custom_hba=tk.BooleanVar(value=False);self.access_rules=[];self.access_editor=None
+        self.check('Свои правила доступа (pg_hba.conf)',self.custom_hba)
+        self.button('Настроить доступ (pg_hba.conf)…',self.edit_access)
+        self.access_note=app._label(self.form,'',9,'muted',wraplength=310,justify=tk.LEFT)
+        self.access_note.pack(fill=tk.X,pady=(4,0))
+        self.custom_hba.trace_add('write',lambda *args:self.refresh_access());self.refresh_access()
         self.note('Для подключения сервера 1С добавьте его подсеть. Существующие каталоги данных и экземпляры не заменяются.')
         self.folder=tk.StringVar(value=str(Path.home()/'Downloads'/'1C'));self.field('Временная папка дистрибутива',self.folder)
         self.note('После установки архив и распакованные временные файлы удаляются на компьютере консоли и на ВМ. Рабочий экземпляр PostgreSQL остаётся в выбранном каталоге.')
@@ -80,7 +86,20 @@ class PostgresInstallPanel(SshFields,JobPanel):
     def finish(self,text='',error=''):
         super().finish(text,error)
         for combo in (self.mode_choice,self.listen_choice):combo.configure(state='readonly')
+        self.refresh_access()
         self.update_actions()
+
+    def refresh_access(self):
+        self.networks_entry.configure(state=tk.DISABLED if self.running or self.custom_hba.get() else tk.NORMAL)
+        self.access_note.configure(text=('Своих правил: '+str(len(self.access_rules))+'. Нажмите «Настроить доступ» для изменения и предпросмотра.'
+            if self.custom_hba.get() else 'Быстрый список разрешает подключения по паролю ко всем базам. Для выбора баз, пользователей и запретов настройте свои правила.'))
+
+    def edit_access(self):
+        if self.running:return
+        if self.access_editor and self.access_editor.window.winfo_exists():self.access_editor.window.lift();return
+        from postgres_access_ui import AccessEditor
+        try:self.access_editor=AccessEditor(self)
+        except ValueError as exc:self.app._panel_error(self,str(exc))
 
     def mode_changed(self,*args):
         mode='linux' if self.is_linux() else 'windows'
@@ -190,11 +209,16 @@ class PostgresInstallPanel(SshFields,JobPanel):
         try:
             if not self.portal or not row:raise ValueError(self.empty_text('distributions') if not self.trees['distributions'].get_children() else 'Выделите нужный дистрибутив в таблице перед установкой.')
             values=validate(dict(data=self.data.get().strip(),prefix=self.prefix.get().strip(),name=self.instance.get().strip(),port=self.port.get(),
-                password=self.pg_password.get(),locale=self.locale.get().strip(),listen=self.listen.get(),networks=self.networks.get()),linux=self.is_linux())
+                password=self.pg_password.get(),locale=self.locale.get().strip(),listen=self.listen.get(),networks=self.networks.get(),
+                access_rules=self.access_rules if self.custom_hba.get() else None),linux=self.is_linux())
+            from postgres_access import configuration
+            configuration(values,row['version'],self.is_linux())
         except ValueError as exc:self.app._panel_error(self,str(exc));return
         service='\nСлужба: '+values['name']+'.service\nФайл: /etc/systemd/system/'+values['name']+'.service' if self.is_linux() else ''
         if not messagebox.askyesno('Установить PostgreSQL?',row['title']+'\n\nЭкземпляр: '+values['name']+'\nДанные: '+values['data']+
-            '\nПорт: '+str(values['port'])+service+'\n\nБудут установлены PostgreSQL и необходимые зависимости, создана служба.',parent=self.app.root,default='no'):return
+            '\nПорт: '+str(values['port'])+service+'\nДоступ: '+('свои правила — '+str(len(values['access_rules'])) if values['access_rules'] is not None else 'быстрый список сетей')+
+            ('\nПравила SSL требуют отдельно настроенных сертификатов и SSL PostgreSQL.' if any(r['connection']=='hostssl' for r in values.get('access_rules') or []) else '')+
+            '\n\nБудут установлены PostgreSQL и необходимые зависимости, создана служба.',parent=self.app.root,default='no'):return
         portal=self.portal;connection=self.ssh_values() if self.is_linux() else None;folder=self.folder.get().strip()
         def installed(result):
             if connection:self.app.saved_servers.remember_ssh(self,connection)

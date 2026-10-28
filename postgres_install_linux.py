@@ -14,6 +14,7 @@ import tempfile
 import time
 
 from ssh_job_runner import execute,Cancelled
+from postgres_access import rules as access_rules, configuration as access_configuration, write_configuration
 
 
 APT_NETWORK_OPTIONS=('-o','Acquire::Retries=3','-o','Acquire::http::Timeout=30',
@@ -30,11 +31,12 @@ def settings(values):
     if not 1024<=port<=65535:raise ValueError('Порт PostgreSQL: 1024–65535')
     if not result.get('password') or any(c in result['password'] for c in '\x00\r\n'):raise ValueError('Задайте пароль postgres без переносов строк')
     if not re.fullmatch(r'[\w.@-]{1,80}',result.get('locale','')):raise ValueError('Некорректная локаль')
-    networks=result.get('networks',[])
+    networks=result.get('networks',[]) if result.get('access_rules') is None else []
     if isinstance(networks,str):networks=networks.split(',')
     networks=[str(ipaddress.ip_network(v.strip(),strict=False)) for v in networks if v.strip()]
     if result.get('listen','*') not in ('*','localhost','127.0.0.1'):raise ValueError('Адреса прослушивания: *, localhost или 127.0.0.1')
     result.update(port=port,networks=networks)
+    result['access_rules']=access_rules(values.get('access_rules'))
     prefix=Path(result.get('prefix',''))
     for directory in (path,prefix):
         if not directory.is_absolute() or directory==Path('/') or '..' in directory.parts or any(c in str(directory) for c in '\x00\r\n'):
@@ -294,6 +296,7 @@ def run(payload,event,cancel):
 def install_instance(payload,event,cancel):
     import pwd
     config=settings(payload['settings']);row=payload['distribution'];root=Path(payload['_root'])
+    access_configuration(config,row['version'],linux=True)
     release={}
     for line in Path('/etc/os-release').read_text().splitlines():
         if '=' in line:
@@ -386,8 +389,8 @@ def install_instance(payload,event,cancel):
                      '--encoding=UTF8','--auth-local=peer','--auth-host='+auth,'--pwfile='+pwfile))
             conf=data/'postgresql.conf';hba=data/'pg_hba.conf'
         with conf.open('a') as stream:stream.write('\n# KA installation\nport = '+str(config['port'])+'\nlisten_addresses = '+pg_literal(config['listen'])+'\n')
-        with hba.open('a') as stream:
-            for network in config['networks']:stream.write('host all all '+network+' '+auth+'\n')
+        backup=write_configuration(hba,config,row['version'],linux=True)
+        event(dict(kind='message',text='Настроен pg_hba.conf; исходный файл: '+str(backup)))
         target=create_service(config,row,binary)
         event(dict(kind='message',text='Служба '+unit_name+'; файл: '+str(target)))
         run_cmd(['systemctl','daemon-reload']);run_cmd(['systemctl','enable',unit_name]);run_cmd(['systemctl','start',unit_name])
