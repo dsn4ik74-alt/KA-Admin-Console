@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.24-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.24)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.24)
+[![Версия](https://img.shields.io/badge/версия-20.33.25-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.25)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.25)
 
-[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.24-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.24/KA-Admin-Console-20.33.24.exe)
+[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.25-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.25/KA-Admin-Console-20.33.25.exe)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -37,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.25** — новая ИБ из CF создаётся и заполняется сразу в выбранном кластере 1С, без временной файловой базы и выгрузки DT. Для существующей ИБ сохранена полная замена пустым DT. В журнале видны отдельные этапы и состояние регистрации при ошибке лицензии.
 
 **20.33.24** — кнопка **«Проверить SSH»** отдельно у источника и получателя передачи файлов. Успешное подключение сохраняется в списке Linux-серверов. Перед установкой PostgreSQL можно настроить `pg_hba.conf` понятными правилами: базы, пользователи, IP/подсети, разрешения и запреты, порядок проверки и SSL; рядом виден итоговый файл.
 

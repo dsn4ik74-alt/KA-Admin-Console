@@ -46,7 +46,8 @@ class ConfigurationInstallPanel(JobPanel):
         self.note('После выбора кластера консоль читает версию агента 1С и находит локальный полный клиент той же версии. Порт кластера также определяется автоматически.')
         self.deploy_button = self.button('Добавить базу на сервер…', self.open_target)
         self.cleanup_button = self.button('Удалить временные шаблоны', self.cleanup_templates)
-        self.note('После успешной загрузки базы удаляются архив, распакованный setup, временная файловая база и установленные здесь шаблоны. При ошибке загрузки шаблоны остаются для повтора. Чужие шаблоны не удаляются.')
+        self.note('Новая база из CF создаётся сразу в кластере. Для полной замены существующей ИБ из CF сначала подготавливается пустой DT во временной базе. '
+                  'После успешной загрузки архив, setup, временные базы и установленные здесь шаблоны удаляются. При ошибке шаблоны остаются для повтора.')
         self.note('Один щелчок только выделяет строку. Выберите конфигурацию и версию кнопкой «Выбрать». Скачивание начинается по «Установить» или двойному щелчку дистрибутива.')
         table = self.split_log()
         self.catalog_tabs = ttk.Notebook(table)
@@ -417,6 +418,7 @@ class ConfigurationTargetPanel(ClusterInfobasePanel):
         start = next(i for i, w in enumerate(children) if isinstance(w, tk.Label) and w.cget('text') == 'Параметры информационной базы')
         self.creation_widgets = [(w, w.pack_info()) for w in children[start:children.index(self.ib_auth_button)] if w.winfo_manager() == 'pack']
         self.deny_jobs.set(True)
+        self.create_db.set(True)
         self.runtime_note = self.app._label(self.form, 'Версия платформы и порт кластера определяются после подключения.',
                                            9, 'muted', anchor=tk.W, justify=tk.LEFT, wraplength=420)
         self.runtime_note.pack(fill=tk.X, before=self.auth_note, pady=(6, 0))
@@ -563,7 +565,8 @@ class ConfigurationTargetPanel(ClusterInfobasePanel):
             return
         detail = (template['title'] + '\nВерсия: ' + template['version'] + '\nВариант: ' + template['variant'] + '\n\n' + address +
                   '\nКластер: ' + cluster['cluster'] + '\n' +
-                  ('Новая регистрация. СУБД: ' + parameters['db-server'] + ' / ' + parameters['db-name'] if parameters else 'UUID ИБ: ' + base['infobase']) +
+                  ('Новая регистрация. СУБД: ' + parameters['db-server'] + ' / ' + parameters['db-name']+
+                   '\nСоздать БД в СУБД при отсутствии: '+('Да' if parameters['create-database'] else 'Нет') if parameters else 'UUID ИБ: ' + base['infobase']) +
                   '\n\nТекущие данные целевой базы будут заменены выбранным шаблоном.\nПродолжить загрузку?')
         if not messagebox.askyesno('Подтвердите загрузку базы', detail, parent=self.winfo_toplevel(), icon='warning', default='no'):
             return

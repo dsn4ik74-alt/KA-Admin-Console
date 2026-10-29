@@ -468,13 +468,17 @@ def deploy_configuration(package, template, plan, event, cancel):
     temp = create_configuration_workspace(plan['folder'], package['distribution']['project']['nick'], template['version'],
                                           inherited_parents=workspace['created_parents'])
     base_created = None
+    creation_requested = False
     outcome = None
     secrets = [plan.get('password', ''), plan.get('cluster_password', ''), plan.get('ib_password', ''), (plan.get('parameters') or {}).get('db-pwd', '')]
     try:
         temp_root = Path(temp['root'])
+        direct_cf = plan['new'] and path.suffix.casefold() == '.cf'
         dt = path
-        if path.suffix.casefold() == '.cf':
-            event(dict(kind='stage', text='Подготовка чистой базы из CF-шаблона'))
+        if path.suffix.casefold() == '.cf' and not direct_cf:
+            event(dict(kind='stage', text='Подготовка пустого DT для полной замены существующей серверной ИБ'))
+            event(dict(kind='message', text='Временная файловая база используется только для подготовки DT. '
+                       'Целевая ИБ: ' + connection + ' Пока она не изменяется.'))
             file_base = temp_root / 'empty-base'
             result_file = temp_root / 'create-result.txt'
             run_native([executable, 'CREATEINFOBASE', _connection_file(file_base), '/UseTemplate', path,
@@ -493,22 +497,41 @@ def deploy_configuration(package, template, plan, event, cancel):
                 raise RuntimeError('Не получена выгрузка чистой базы. Целевая база не изменена.')
         if plan['new']:
             event(dict(kind='stage', text='Создание новой информационной базы в кластере'))
+            creation_requested = True
             base_created = client.create(plan['cluster']['cluster'], parameters)
             infobase, name = base_created['infobase_id'], base_created['name']
             if not infobase:
                 raise RuntimeError('Команда создания завершилась, но UUID не получен. Проверьте список; повторное создание не выполняется.')
+            event(dict(kind='message', text='ИБ создана в кластере: ' + name + ' · UUID: ' + infobase + '\n' + connection +
+                       '\nСУБД: ' + parameters['db-server'] + ' / ' + parameters['db-name']))
         else:
             infobase, name = plan['base']['infobase'], plan['base']['name']
         with client.connect() as (rac, endpoint):
             client.require_base(rac, endpoint, plan['cluster']['cluster'], infobase, name)
         auth = (['/N', plan['ib_user'], '/P', plan.get('ib_password', '')] if plan.get('ib_user') else [])
-        event(dict(kind='stage', text='Загрузка ' + template['variant'].casefold() + ' базы → ' + name))
-        restore_result = temp_root / 'restore-result.txt'
-        run_native([executable, 'DESIGNER', '/IBConnectionString', connection, *auth, '/RestoreIB', dt,
-                    '/DumpResult', restore_result, '/DisableStartupDialogs', '/DisableStartupMessages',
-                    '/Out', temp_root / 'restore.log'], event, cancel,
-                   temp_root / 'restore.log', secrets)
-        require_native_result(restore_result, 'Загрузка базы')
+        if direct_cf:
+            event(dict(kind='stage', text='Загрузка CF непосредственно в новую серверную ИБ → ' + name))
+            event(dict(kind='message', text='Подключение к серверной ИБ: ' + connection + '\nПромежуточная файловая база не создаётся.'))
+            load_result = temp_root / 'load-cf-result.txt'
+            run_native([executable, 'DESIGNER', '/IBConnectionString', connection, *auth, '/LoadCfg', path,
+                        '/DumpResult', load_result, '/DisableStartupDialogs', '/DisableStartupMessages',
+                        '/Out', temp_root / 'load-cf.log'], event, cancel, temp_root / 'load-cf.log', secrets)
+            require_native_result(load_result, 'Загрузка CF в серверную ИБ')
+            event(dict(kind='stage', text='Применение конфигурации к базе данных на сервере → ' + name))
+            apply_result = temp_root / 'apply-cf-result.txt'
+            run_native([executable, 'DESIGNER', '/IBConnectionString', connection, *auth, '/UpdateDBCfg', '-Server',
+                        '/DumpResult', apply_result, '/DisableStartupDialogs', '/DisableStartupMessages',
+                        '/Out', temp_root / 'apply-cf.log'], event, cancel, temp_root / 'apply-cf.log', secrets)
+            require_native_result(apply_result, 'Применение конфигурации серверной базы')
+        else:
+            event(dict(kind='stage', text='Полная замена серверной ИБ из DT → ' + name))
+            restore_result = temp_root / 'restore-result.txt'
+            run_native([executable, 'DESIGNER', '/IBConnectionString', connection, *auth, '/RestoreIB', dt,
+                        '/DumpResult', restore_result, '/DisableStartupDialogs', '/DisableStartupMessages',
+                        '/Out', temp_root / 'restore.log'], event, cancel,
+                       temp_root / 'restore.log', secrets)
+            require_native_result(restore_result, 'Загрузка базы')
+        event(dict(kind='message', text='Загрузка в серверную ИБ подтверждена: ' + connection + ' · UUID: ' + infobase))
         # Mutation has completed. Cleanup failure must never cause another restore.
         cleanup_error = cleanup_configuration(package, event)
         if not cleanup_error:
@@ -520,9 +543,18 @@ def deploy_configuration(package, template, plan, event, cancel):
                        settings_error='\n'.join(filter(None, (cleanup_error, (base_created or {}).get('settings_error', '')))))
         return outcome
     except Exception as exc:
-        if base_created:
+        if base_created and base_created.get('infobase_id'):
             event(dict(kind='message', text='ИБ уже создана: ' + base_created['name'] + '. Она не удалялась. '
                        'Для повтора выберите её как существующую; не создавайте заново.'))
+        elif creation_requested:
+            event(dict(kind='message',text='Запрос создания ИБ выполнялся. Проверьте список баз перед повтором; автоматический повтор не запускается.'))
+        if re.search(r'не обнаружено свободной лицензии|(?:no|not found|unable to obtain).*licen[sc]e',str(exc),re.I):
+            state = ('ИБ уже создана в кластере: ' + connection + '\n' if base_created and base_created.get('infobase_id') else
+                     'Создание ИБ запрашивалось, но результат не подтверждён. Проверьте список баз перед повтором.\n' if creation_requested else
+                     'Создание целевой ИБ в кластере ещё не выполнялось.\n' if plan['new'] else
+                     'Целевая ИБ: ' + connection + '\n')
+            raise RuntimeError(state+'Конфигуратор не получил лицензию 1С. Проверьте доступность клиентской лицензии '
+                               'для выбранной платформы и разрешение выдачи лицензий сервером 1С.\n'+redact(str(exc),secrets)) from exc
         raise
     finally:
         error = clean_owned(temp, event)
