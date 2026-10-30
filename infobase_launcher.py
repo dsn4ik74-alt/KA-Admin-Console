@@ -23,7 +23,7 @@ def choose_open_mode(app,row):
         app._button(buttons,title,lambda value=mode:choose(value),primary=mode=='ENTERPRISE').pack(side=tk.LEFT,padx=(0,7))
     app._button(buttons,'Отмена',window.destroy).pack(side=tk.LEFT)
     window.bind('<Escape>',lambda event:window.destroy());window.protocol('WM_DELETE_WINDOW',window.destroy)
-    window.grab_set();window.after_idle(window.focus_set);window.wait_window()
+    window.grab_set();window.focus_set();window.wait_window()
     return result[0] if result else None
 
 

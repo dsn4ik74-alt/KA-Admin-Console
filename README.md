@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.26-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.26)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.26)
+[![Версия](https://img.shields.io/badge/версия-20.33.27-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.27)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.27)
 
-[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.26-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.26/KA-Admin-Console-20.33.26.exe)
+[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.27-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.27/KA-Admin-Console-20.33.27.exe)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -37,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.27** — исправлена фоновая ошибка при быстром закрытии окна выбора «Предприятие / Конфигуратор».
 
 **20.33.26** — при открытии базы из «ИБ» можно выбрать «Предприятие» или «Конфигуратор». Подбирается клиент фактической версии кластера; тонкий клиент используется только для «Предприятия». Выделение текста адресов баз стало темнее.
 
