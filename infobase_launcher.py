@@ -4,13 +4,32 @@ import subprocess
 import threading
 
 from add_cluster_infobase import ClusterClient
-from configuration_install import one_c_command, platform_client
+from configuration_install import one_c_command, platform_client, designer_for_version
 from infobase_address import infobase_address
 from postgres_runner import OperationCancelled
 
 
+def choose_open_mode(app,row):
+    import tkinter as tk
+    window=tk.Toplevel(app.root);window.title('Открыть информационную базу')
+    window.transient(app.root);window.resizable(False,False);window.configure(bg=app.colors['panel'])
+    frame=tk.Frame(window,bg=app.colors['panel'],padx=18,pady=15);frame.pack(fill=tk.BOTH,expand=True)
+    app._label(frame,row['base'],12,'fg',True,wraplength=510,justify=tk.LEFT,anchor=tk.W).pack(fill=tk.X)
+    app._label(frame,'В каком режиме открыть базу?',10,'muted',anchor=tk.W).pack(fill=tk.X,pady=(8,12))
+    buttons=tk.Frame(frame,bg=app.colors['panel']);buttons.pack(fill=tk.X)
+    result=[]
+    def choose(mode):result.append(mode);window.destroy()
+    for title,mode in (('Предприятие','ENTERPRISE'),('Конфигуратор','DESIGNER')):
+        app._button(buttons,title,lambda value=mode:choose(value),primary=mode=='ENTERPRISE').pack(side=tk.LEFT,padx=(0,7))
+    app._button(buttons,'Отмена',window.destroy).pack(side=tk.LEFT)
+    window.bind('<Escape>',lambda event:window.destroy());window.protocol('WM_DELETE_WINDOW',window.destroy)
+    window.grab_set();window.after_idle(window.focus_set);window.wait_window()
+    return result[0] if result else None
+
+
 def prepare_client(row, target, versions, user='', password='', local=True, ras_port=1545,
-                   event=lambda item: None, cancel=None):
+                   event=lambda item: None, cancel=None, mode='ENTERPRISE'):
+    if mode not in ('ENTERPRISE','DESIGNER'):raise ValueError('Выберите «Предприятие» или «Конфигуратор»')
     cancel = cancel if cancel is not None else threading.Event()
     if cancel.is_set():
         raise OperationCancelled('Открытие базы отменено до подключения к серверу.')
@@ -25,14 +44,17 @@ def prepare_client(row, target, versions, user='', password='', local=True, ras_
     address = infobase_address(cluster, base['name'], target['server'])
     if not address:
         raise ValueError('Сервер 1С не вернул порт выбранного кластера. Обновите список ИБ. Для открытия нужен порт кластера, например 1541 или 4541.')
-    selected = platform_client(cluster['platform_version'], versions)
+    if mode=='DESIGNER':
+        selected=dict(path=designer_for_version(cluster['platform_version'],versions=versions),
+                      kind='конфигуратор',version=cluster['platform_version'])
+    else:selected = platform_client(cluster['platform_version'], versions)
     if cancel.is_set():
         raise OperationCancelled('Открытие базы отменено до запуска клиента.')
-    event(dict(kind='stage', text='Найден ' + selected['kind'] + ' клиент ' + selected['version'] + '\n' + address))
+    event(dict(kind='stage', text=('Найден Конфигуратор ' if mode=='DESIGNER' else 'Найден '+selected['kind']+' клиент ')+selected['version']+'\n'+address))
     # Cluster administrator credentials are never passed to the application.
     # 1C itself displays its standard infobase authentication dialog if needed.
-    return dict(selected, address=address, cluster=cluster, base=base,
-                args=[selected['path'], 'ENTERPRISE', '/IBConnectionString', address])
+    return dict(selected, address=address, cluster=cluster, base=base,mode=mode,
+                args=[selected['path'], mode, '/IBConnectionString', address])
 
 
 def start_client(plan, cancel):

@@ -42,7 +42,7 @@ from form_notice import FormNotice
 from saved_servers import SavedServers
 from database_sizes import DatabaseSizes
 from scheduler_ui import SchedulerPanel, install_schedule_button
-from infobase_launcher import prepare_client, start_client
+from infobase_launcher import prepare_client, start_client, choose_open_mode
 from infobase_address import infobase_address
 from ui_theme import COLORS, WorkspaceSidebar, apply_styles
 from web_publication_ui import WebPublicationPanel
@@ -50,7 +50,7 @@ from file_transfer_ui import FileTransferPanel
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.25"
+APP_VERSION = "20.33.26"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -251,7 +251,7 @@ class App:
 
     def _entry(self, parent, variable, width=None, show=None):
         widget = tk.Entry(parent, textvariable=variable, width=width, show=show, font=("Segoe UI", 10),
-                        bg=C["panel"], fg=C["fg"], insertbackground=C["accent"], selectbackground=C["selected"],
+                        bg=C["panel"], fg=C["fg"], insertbackground=C["accent"], selectbackground=C["text_selected"],
                         selectforeground=C['fg'], disabledbackground=C['button'], disabledforeground=C['muted'],
                         relief="flat", bd=5, highlightthickness=1,
                         highlightbackground=C["border"], highlightcolor=C["accent"])
@@ -689,6 +689,8 @@ class App:
         if len(self._opening_bases) >= 4:
             self._panel_error(None, 'Дождитесь открытия одной из баз: одновременно подготавливаются четыре клиента.')
             return 'break'
+        launch_mode=choose_open_mode(self,row)
+        if launch_mode is None:return 'break'
         target = next((dict(item) for item in self.all_items if str(item['server']).casefold() == row['server'].casefold()
                        and str(item['port']) == str(row['port'])), dict(server=row['server'], port=row['port']))
         target['version'] = row.get('cluster_version') or target.get('version', '')
@@ -696,7 +698,7 @@ class App:
         user, password, local = self.user_var.get(), self.pwd_var.get(), self.local_ras_var.get()
         ras_port = self._settings.get('ras_ports', {}).get(str(target['server']) + ':' + str(target['port']), 1545)
         cancel = threading.Event()
-        token = self.activity.begin(dict(operation='Запуск клиента 1С', server=row['server'], database=row['base'], executor='Windows'))
+        token = self.activity.begin(dict(operation='Запуск Конфигуратора 1С' if launch_mode=='DESIGNER' else 'Запуск клиента 1С', server=row['server'], database=row['base'], executor='Windows'))
         self._opening_bases[key] = dict(row=row, cancel=cancel, messages=[], token=token)
         self._clear_panel_error(None)
         self._status('Подготовка открытия базы: ' + row['base'])
@@ -706,9 +708,9 @@ class App:
                 self._post(self._opening_message, key, item['text'])
         def worker():
             try:
-                plan = prepare_client(row, target, versions, user, password, local, ras_port, notify, cancel)
+                plan = prepare_client(row, target, versions, user, password, local, ras_port, notify, cancel,mode=launch_mode)
                 result = start_client(plan, cancel)
-                self.activity.end(token, 'Клиент запущен')
+                self.activity.end(token, 'Конфигуратор запущен' if launch_mode=='DESIGNER' else 'Клиент запущен')
                 self._post(self._base_opened, key, result, '', False)
             except OperationCancelled as exc:
                 self.activity.end(token, 'Прервано')
@@ -741,7 +743,7 @@ class App:
                     row.update(cluster_host=cluster.get('host', ''), cluster_port=cluster['port'],
                                cluster_version=cluster['platform_version'])
             if self.mode == 'bases':
-                self._status('Запущен ' + result['kind'] + ' клиент ' + result['version'] + ' · ' + result['address'])
+                self._status(('Запущен Конфигуратор ' if result.get('mode')=='DESIGNER' else 'Запущен '+result['kind']+' клиент ')+result['version']+' · '+result['address'])
         elif error and not cancelled:
             text = 'База: ' + job['row']['base'] + '\n' + error
             self._set_errors([*self._errors, '\n'.join([*job['messages'], text])])

@@ -7,7 +7,7 @@ COLORS = {
     'bg': '#f3f3fa', 'panel': '#ffffff', 'row': '#f8f8fd', 'border': '#e6e7f2',
     'fg': '#20223d', 'muted': '#747990', 'accent': '#5749e9', 'hover': '#4436d0',
     'accent_fg': '#ffffff', 'button': '#f0f0fa', 'button_hover': '#e7e5fc',
-    'selected': '#e9e6ff', 'danger': '#ce465f', 'danger_hover': '#b43750',
+    'selected': '#e9e6ff', 'text_selected': '#b9acf0', 'danger': '#ce465f', 'danger_hover': '#b43750',
     'success': '#149b79', 'success_bg': '#e5f6ef', 'warning': '#b37a1c',
     'warning_bg': '#fff5df', 'rail': '#ffffff',
 }
