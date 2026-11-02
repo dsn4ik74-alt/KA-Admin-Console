@@ -46,11 +46,12 @@ from infobase_launcher import prepare_client, start_client, choose_open_mode
 from infobase_address import infobase_address
 from ui_theme import COLORS, WorkspaceSidebar, apply_styles
 from web_publication_ui import WebPublicationPanel
+from ring_license_ui import RingLicensePanel
 from file_transfer_ui import FileTransferPanel
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.27"
+APP_VERSION = "20.33.28"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -517,7 +518,7 @@ class App:
                     'db_copy': SqlCopyPanel, 'pg_copy': PostgresCopyPanel, 'platform_install': PlatformInstallPanel,
                     'configuration_install': ConfigurationInstallPanel,
                     'windirstat': WinDirStatPanel, 'postgres_install': PostgresInstallPanel, 'linux_disk': LinuxDiskPanel,
-                    'web_publication':WebPublicationPanel,'file_transfer':FileTransferPanel}.get(mode))
+                    'web_publication':WebPublicationPanel,'file_transfer':FileTransferPanel,'ring_license':RingLicensePanel}.get(mode))
         if factory is None:
             return self._pages.get(mode)
         panel = factory(self.root, self, C)
@@ -997,7 +998,7 @@ class App:
             alias = ('sql' if mode in SQL_MODES else 'postgres' if mode in PG_MODES else 'services' if mode in SERVICE_MODES else
                      {'accounts': 'accounts', 'jr_archive': 'archive', 'cluster_infobase': 'cluster_infobase',
                       'db_copy': 'sql_copy', 'pg_copy': 'postgres_copy', 'platform_install': 'platform_install', 'windirstat': 'windirstat',
-                      'web_publication':'web_publication','file_transfer':'file_transfer'}.get(mode))
+                      'web_publication':'web_publication','file_transfer':'file_transfer','ring_license':'ring_license'}.get(mode))
             if alias:
                 setattr(self, alias, panel)
             if hasattr(panel, 'show_mode') and not panel.running:
@@ -1026,6 +1027,7 @@ class App:
                       'configuration_install': 'Типовые российские конфигурации 1С · setup на этом компьютере, база в выбранном кластере',
                       'web_publication':'Публикация 1С и управление IIS / Apache · локально Windows, удалённо WinRM / SSH',
                       'file_transfer':'Windows ↔ Windows / Linux · источник не удаляется, передача выполняется в фоне',
+                      'ring_license':'Программные лицензии 1С · список, сведения и проверка привязки на этом компьютере или удалённом Windows / Linux',
                       'home': 'Избранное, последние базы и история операций', "servers": "Список серверов",
                       "bases": "Обновите список баз или отфильтруйте загруженные данные",
                       "accounts": "Введите ФИО сотрудников. Создание выполняется на этом компьютере.",
@@ -1138,6 +1140,7 @@ class App:
                 return
             if self.mode=='web_publication':panel.inspect();return
             if self.mode=='file_transfer':panel.list_source();return
+            if self.mode=='ring_license':panel.run_check('list');return
             if (panel, 'source') in self.hub.refresh_buttons:
                 role = 'source'
                 focused = self.root.focus_get()

@@ -13,7 +13,7 @@ from ssh_connection import connect
 
 
 def run_script(module,values,payload,event,cancel,files=(),elevate=False):
-    if module not in ('postgres_install_linux','linux_disk_scan','linux_disk_delete','web_publication_linux'):raise ValueError('Неизвестный исполнитель SSH')
+    if module not in ('postgres_install_linux','linux_disk_scan','linux_disk_delete','web_publication_linux','ring_license_linux'):raise ValueError('Неизвестный исполнитель SSH')
     if any(c in (values.get('sudo_password') or values.get('password','')) for c in '\r\n\x00'):raise ValueError('Пароль SSH / sudo не должен содержать переносы строк')
     token=uuid4().hex;root='/tmp/ka-job-'+token
     with connect(values) as client:
@@ -40,6 +40,7 @@ def run_script(module,values,payload,event,cancel,files=(),elevate=False):
                 sftp.put(runtime['path'],root+'/runtime.tar.gz',callback=progress,confirm=True)
                 sources=[(source_root/'ssh_job_runner.py','runner.py'),(source_root/(module+'.py'),'task.py')]
                 if module=='postgres_install_linux':sources.append((source_root/'postgres_access.py','postgres_access.py'))
+                if module=='ring_license_linux':sources.append((source_root/'ring_license.py','ring_license.py'))
                 for source,name in sources:
                     sftp.put(str(source),root+'/'+name,confirm=True)
                 manifests=[]

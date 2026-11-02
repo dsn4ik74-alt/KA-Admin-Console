@@ -26,6 +26,8 @@ for file in (Path(SPECPATH) / 'vendor' / '1c-ras').rglob('*'):
     if file.is_file():
         # Original official binaries and their dependency closure stay together.
         pg_data.append((str(file), str(file.parent.relative_to(Path(SPECPATH)))))
+for filename in ('windows-x64.zip','linux-x64.tar.gz'):
+    pg_data.append((str(Path(SPECPATH)/'vendor'/'ring'/filename),'vendor/ring'))
 
 a = Analysis(
     ['1C Console.py'],
@@ -35,6 +37,7 @@ a = Analysis(
            ('ssh_job_runner.py','.'),('linux_disk_scan.py','.'),('linux_disk_delete.py','.'),('postgres_install_linux.py','.'),
            ('web_publication_linux.py','.'),('web_publication_windows.ps1','.'),
            ('postgres_access.py','.'),
+           ('ring_license.py','.'),('ring_license_linux.py','.'),('ring_license_windows.ps1','.'),
            ('vendor/efd-format/LICENSE.txt','vendor/efd-format')] + pg_data,
     hiddenimports=[],
     hookspath=[],

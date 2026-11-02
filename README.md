@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.27-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.27)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.27)
+[![Версия](https://img.shields.io/badge/версия-20.33.28-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.28)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.28)
 
-[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.27-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.27/KA-Admin-Console-20.33.27.exe)
+[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.28-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.28/KA-Admin-Console-20.33.28.exe)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -28,7 +28,7 @@
 
 | Раздел | Что можно сделать |
 | --- | --- |
-| **1С** | Найти и открыть базу, добавить её в кластер, опубликовать на IIS/Apache, установить платформу и типовые конфигурации из ИТС, архивировать ЖР. |
+| **1С** | Найти и открыть базу, добавить её в кластер, опубликовать на IIS/Apache, установить платформу и конфигурации из ИТС, архивировать ЖР, проверить программные лицензии через ring. |
 | **СУБД** | Создать или удалить базу, выполнить бэкап, восстановление или цепочку «бэкап + восстановление» для MSSQL и PostgreSQL. |
 | **Windows / Linux** | Управлять службами Windows, создавать локальные учётные записи, анализировать диски и передавать файлы через Robocopy, SMB и SFTP. |
 | **Планировщик** | Запускать последовательности действий по расписанию и просматривать журналы. |
@@ -37,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.28** — вкладка **«1С → Лицензии 1С · ring»**: список, сведения, поиск, проверка выбранных или всех программных лицензий. Локально в Windows, удалённо Windows (WinRM + SMB) и Linux x86-64 (SSH). Ring, License Tools и отдельная Java встроены; временный комплект на сервере удаляется после проверки. Активация и изменение лицензий не выполняются. Свободные места, HASP и подписка ИТС этой утилитой не определяются.
 
 **20.33.27** — исправлена фоновая ошибка при быстром закрытии окна выбора «Предприятие / Конфигуратор».
 

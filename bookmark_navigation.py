@@ -16,7 +16,8 @@ PAGES = {"servers": "Серверы", "bases": "ИБ", "accounts": "Создан
          "pg_copy": "Бэкап + восстановление", "platform_install": "Установка 1С из ИТС", "windirstat": "WinDirStat",
          "scheduler": "Планировщик", "configuration_install": "Установка конфигураций",
          "postgres_install": "Установка PostgreSQL из ИТС", "linux_disk": "Анализ диска по SSH",
-         "web_publication": "Публикация ИБ", "file_transfer": "Передача файлов / Robocopy"}
+         "web_publication": "Публикация ИБ", "file_transfer": "Передача файлов / Robocopy",
+         "ring_license": "Лицензии 1С · ring"}
 
 
 def postgres_folder():
@@ -37,7 +38,8 @@ def default_layout():
                 {"id": "jr_archive", "title": PAGES["jr_archive"]},
                 {"id": "platform_install", "title": PAGES["platform_install"]},
                 {"id": "configuration_install", "title": PAGES["configuration_install"]},
-                {"id": "web_publication", "title": PAGES["web_publication"]}]},
+                {"id": "web_publication", "title": PAGES["web_publication"]},
+                {"id": "ring_license", "title": PAGES["ring_license"]}]},
             {"id": "folder-win", "title": "Win", "children": [
                 {"id": "accounts", "title": PAGES["accounts"]}, service_folder(), {'id': 'windirstat', 'title': PAGES['windirstat']},
                 {'id':'file_transfer','title':PAGES['file_transfer']}]},
@@ -154,7 +156,7 @@ class NavigationLayout:
                 parent=self.find('folder-sql') if key=='postgres_install' else None
                 (parent['children'] if parent is not None and 'children' in parent else self.nodes).append(folder)
             folder['children'].append(dict(id=key,title=PAGES[key]));seen.add(key)
-        for key, folder_key in (('web_publication','folder-1c'),('file_transfer','folder-win')):
+        for key, folder_key in (('web_publication','folder-1c'),('file_transfer','folder-win'),('ring_license','folder-1c')):
             if key not in seen:
                 folder=self.find(folder_key)
                 (folder['children'] if folder and 'children' in folder else self.nodes).append({'id':key,'title':PAGES[key]})
