@@ -52,7 +52,7 @@ from workspace_tabs import WorkspaceTabStrip, split_legacy_tabs, page_title
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.31"
+APP_VERSION = "20.33.32"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"

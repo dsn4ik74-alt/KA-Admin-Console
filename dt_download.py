@@ -50,6 +50,7 @@ def download_dt(client, result, folder, event, cancel=None, retention_days=0):
                 raise ValueError('Временный DT изменён или заменён ссылкой')
             event(dict(kind='stage', text='Скачивание DT на компьютер консоли → ' + str(target)))
             event(dict(kind='progress', percent=0, phase='Скачивание DT', unit='файла', estimated=False))
+            event(dict(kind='backup_size', path=str(target), size=0, active=True, text=''))
             digest = hashlib.sha256()
             transferred, last_report = 0, time.monotonic()
             fd, stage = tempfile.mkstemp(prefix='.ka_dt_', suffix='.part', dir=destination)
@@ -65,6 +66,7 @@ def download_dt(client, result, folder, event, cancel=None, retention_days=0):
                         transferred += written
                         now = time.monotonic()
                         if now - last_report >= .2:
+                            event(dict(kind='backup_size', path=str(target), size=transferred, active=True, text=''))
                             event(dict(kind='progress', percent=min(99.9, transferred * 100 / size),
                                        phase='Скачивание DT', unit='файла', estimated=False))
                             last_report = now
@@ -84,6 +86,7 @@ def download_dt(client, result, folder, event, cancel=None, retention_days=0):
                 os.unlink(stage)
             stage = None
             event(dict(kind='artifact', text='', path=str(target), size=size))
+            event(dict(kind='backup_size', path=str(target), size=size, active=False, text=''))
             event(dict(kind='progress', percent=100, phase='Скачивание DT', unit='файла', estimated=False))
             event(dict(kind='message', text='DT сохранён на компьютере консоли, размер и SHA256 проверены: ' + str(target)))
             try:

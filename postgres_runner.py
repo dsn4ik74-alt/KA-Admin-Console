@@ -94,6 +94,54 @@ class ProcessTree:
                     pass
 
 
+class BackupSizeWatcher:
+    """Measure output on its execution host, independently of utility logs."""
+    def __init__(self, source, target, event, interval=1):
+        self.source, self.target, self.event = Path(source), str(target), event
+        self.interval = interval
+        self.stopped = threading.Event()
+        self.thread = None
+
+    def measure(self, path, active=True):
+        path = Path(path)
+        if not path.is_dir():return path.stat().st_size
+        total, pending = 0, [path]
+        while pending:
+            if active and self.stopped.is_set():return None
+            with os.scandir(pending.pop()) as entries:
+                for entry in entries:
+                    if active and self.stopped.is_set():return None
+                    if entry.is_symlink() or getattr(entry, 'is_junction', lambda: False)():continue
+                    if entry.is_dir(follow_symlinks=False):pending.append(entry.path)
+                    elif entry.is_file(follow_symlinks=False):total += entry.stat(follow_symlinks=False).st_size
+        return total
+
+    def sample(self, source=None, active=True):
+        unavailable = False
+        try:size = self.measure(source or self.source, active)
+        except FileNotFoundError:size = None
+        except OSError:size = None;unavailable = True
+        if active and self.stopped.is_set():return
+        try:self.event(dict(kind='backup_size', path=self.target, size=size, active=active, unavailable=unavailable, text=''))
+        except Exception:pass  # Telemetry cannot invalidate a successful backup.
+
+    def start(self):
+        self.sample()
+        def watch():
+            while not self.stopped.wait(self.interval):self.sample()
+        self.thread = threading.Thread(target=watch, daemon=True)
+        try:self.thread.start()
+        except RuntimeError:
+            self.thread = None
+            try:self.event(dict(kind='backup_size', path=self.target, size=None, active=False, unavailable=True, text=''))
+            except Exception:pass
+
+    def stop(self, final=None):
+        self.stopped.set()
+        if self.thread is not None:self.thread.join(timeout=2)
+        if final is not None:self.sample(final, active=False)
+
+
 class JobProgress:
     """Report a measured unit of a phase, never a timer-generated percentage."""
     def __init__(self, runner, phase, unit, estimated=False):
@@ -753,7 +801,9 @@ class Runner:
                 fd, stage = tempfile.mkstemp(prefix='.console_', suffix='.dt' if ibcmd else '.part', dir=directory)
                 os.close(fd)
             self.emit('Выгрузка ' + database + ' → ' + str(target), 'stage')
+            size_watch = BackupSizeWatcher(stage, target, self.event)
             try:
+                size_watch.start()
                 if ibcmd:
                     self.run(self.ibcmd_args(database) + [stage], database, fallback_encoding=ibcmd_output_encoding())
                 else:
@@ -774,12 +824,14 @@ class Runner:
                     self.check_gzip(stage)
                 self.check_cancel()
                 os.replace(stage, target)
+                size_watch.stop(final=target)
                 created.append(str(target))
                 self.report_artifact(target)
                 self.emit('Готово: ' + str(target))
                 if days:
                     self.cleanup(directory, safe, suffix, days, target)
             finally:
+                size_watch.stop()
                 if container is not None:
                     self.remove_archive_directory(container, directory)
                 elif os.path.exists(stage):

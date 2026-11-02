@@ -64,6 +64,8 @@ class JobPanel(tk.Frame):
         self.state_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.title = app._label(self, title, 17, bold=True, anchor=tk.W)
         self.title.pack(fill=tk.X, padx=22, pady=(2, 14))
+        self.backup_size_label = app._label(self, '', 10, 'accent', bold=True, anchor=tk.W)
+        self._backup_measurement = None
         body = tk.Frame(self, bg=colors['bg'])
         body.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
         body.columnconfigure(0, weight=1, minsize=290)
@@ -200,6 +202,8 @@ class JobPanel(tk.Frame):
         self.output.configure(state=tk.NORMAL)
         self.output.delete('1.0', tk.END)
         self.output.configure(state=tk.DISABLED)
+        self._backup_measurement = None
+        self.backup_size_label.pack_forget()
 
     def copy_results(self, event=None):
         text = self.output.get('1.0', 'end-1c')
@@ -215,6 +219,8 @@ class JobPanel(tk.Frame):
         self.app.database_sizes.cancel(self)
         self.app._clear_panel_error(self)
         self.running = True
+        self._backup_measurement = None
+        self.backup_size_label.pack_forget()
         self._finished_progress = ''
         self.progress_state.start()
         self.cancel_event.clear()
@@ -238,6 +244,10 @@ class JobPanel(tk.Frame):
         lines, last_stage = [], None
         progress_changed = False
         for event in events:
+            if event.get('kind') == 'backup_size':
+                self._backup_measurement = dict(event)
+                self._show_backup_size()
+                continue
             if event.get('kind') == 'progress':
                 self.progress_state.update(event['percent'], event.get('unit', 'этапа'), event.get('estimated', False), event.get('phase', ''))
                 progress_changed = True
@@ -270,6 +280,18 @@ class JobPanel(tk.Frame):
                 self.app.progress.configure(mode='indeterminate')
                 self.app.progress.start(12)
             self._show_progress()
+
+    def _show_backup_size(self):
+        value = self._backup_measurement
+        if value is None:return
+        size = value.get('size')
+        detail = ('недоступен · нет доступа к размеру файла' if value.get('unavailable') else
+                  ('ожидание файла' if value.get('active',True) else 'не получен') if size is None else format_size(size))
+        import ntpath
+        name = ntpath.basename(value.get('path', ''))
+        prefix = 'Последний размер бэкапа' if value.get('interrupted') else 'Размер бэкапа'
+        self.backup_size_label.configure(text=prefix+': '+detail+(' · '+name if name else ''))
+        self.backup_size_label.pack(after=self.title, fill=tk.X, padx=22, pady=(0, 8))
 
     def _show_progress(self):
         if not self.app._panel_visible(self):
@@ -391,6 +413,9 @@ class JobPanel(tk.Frame):
 
     def finish(self, text='', error=''):
         self.running = False
+        if error and self._backup_measurement:
+            self._backup_measurement['interrupted'] = True
+            self._show_backup_size()
         if self._progress_job is not None:
             self.after_cancel(self._progress_job)
             self._progress_job = None

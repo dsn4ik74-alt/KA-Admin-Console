@@ -48,6 +48,60 @@ public static class SqlConsoleMessages {
         };
     }
 }
+public sealed class SqlBackupSize : IDisposable {
+    private readonly string connectionString, path;
+    private readonly ManualResetEvent stop = new ManualResetEvent(false);
+    private readonly Thread worker;
+    private volatile bool completed;
+    private static string Quote(string value) {
+        return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"")
+            .Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t") + "\"";
+    }
+    private void Emit(object size, bool active, bool unavailable) {
+        string number = size == null || size is DBNull ? "null" : Convert.ToInt64(size).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Console.WriteLine("{\"kind\":\"backup_size\",\"path\":" + Quote(path) + ",\"size\":" + number +
+            ",\"active\":" + (active ? "true" : "false") + ",\"unavailable\":" + (unavailable ? "true" : "false") + "}");
+    }
+    public SqlBackupSize(string configuration, string filename) {
+        connectionString = configuration; path = filename;
+        Emit(null, true, false);
+        worker = new Thread(Run); worker.IsBackground = true; worker.Start();
+    }
+    private void Run() {
+        try {
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            builder.ConnectTimeout = 2;
+            using (var connection = new SqlConnection(builder.ConnectionString)) {
+                connection.Open();
+                bool unix = path.StartsWith("/") && !path.StartsWith("//");
+                string lookup = unix ? path : path.Replace('/', '\\');
+                int separator = Math.Max(lookup.LastIndexOf('/'), lookup.LastIndexOf('\\'));
+                using (var command = connection.CreateCommand()) {
+                    command.CommandTimeout = 2;
+                    command.CommandText = "SELECT TOP(1) size_in_bytes FROM sys.dm_os_enumerate_filesystem(@folder,@filename) " +
+                        "WHERE is_directory=0 AND full_filesystem_path COLLATE " +
+                        (unix ? "Latin1_General_100_BIN2" : "Latin1_General_100_CI_AS") + "=@path;";
+                    command.Parameters.Add("@folder", System.Data.SqlDbType.NVarChar, 260).Value = lookup.Substring(0, separator + 1);
+                    command.Parameters.Add("@filename", System.Data.SqlDbType.NVarChar, 260).Value = lookup.Substring(separator + 1);
+                    command.Parameters.Add("@path", System.Data.SqlDbType.NVarChar, 260).Value = lookup;
+                    do {
+                        object size = command.ExecuteScalar();
+                        Emit(size, !stop.WaitOne(0), false);
+                    } while (!stop.WaitOne(1000));
+                    if (completed) Emit(command.ExecuteScalar(), false, false);
+                }
+            }
+        } catch (Exception) {
+            // A denied/unsupported metadata query must never cancel BACKUP.
+            Emit(null, false, true);
+        }
+    }
+    public void Complete() { completed = true; }
+    public void Dispose() {
+        stop.Set();
+        if (worker.Join(3000)) stop.Dispose();
+    }
+}
 '@
 function Send($event) {
     [Console]::Out.WriteLine(($event | ConvertTo-Json -Compress -Depth 12))
@@ -78,8 +132,13 @@ try {
         $command=$connection.CreateCommand()
         $command.CommandText=[string]$step.sql
         $command.CommandTimeout=[int]$step.timeout
+        $sizeProbe=$null
         try {
             [SqlConsoleMessages]::SetCommand($command)
+            if ($step.backup_path) {
+                try {$sizeProbe=New-Object SqlBackupSize($builder.ConnectionString, [string]$step.backup_path)}
+                catch {Send @{kind='backup_size';path=[string]$step.backup_path;size=$null;active=$false;unavailable=$true}}
+            }
             if ($step.query) {
                 $reader=$command.ExecuteReader()
                 $rows=New-Object 'System.Collections.Generic.List[object]'
@@ -98,9 +157,14 @@ try {
                 $results.Add(@($rows.ToArray()))
             } else {
                 [void]$command.ExecuteNonQuery()
+                if ($sizeProbe) {$sizeProbe.Complete()}
                 $results.Add(@())
             }
-        } finally { [SqlConsoleMessages]::SetCommand($null); $command.Dispose() }
+        } finally {
+            [SqlConsoleMessages]::SetCommand($null)
+            if ($sizeProbe) {$sizeProbe.Dispose()}
+            $command.Dispose()
+        }
     }
     Send @{kind='done';results=@($results.ToArray())}
 } finally { $connection.Dispose() }
@@ -248,6 +312,7 @@ def backup_plan(database, folder, *, compression=True, copy_only=True, now=None,
     options += ["CHECKSUM", "NOFORMAT", "NOINIT", "STATS = 1", "NAME = " + literal(database + " — FULL")]
     sql = f"BACKUP DATABASE {identifier(database)} TO DISK = {literal(target)} WITH " + ', '.join(options) + ';'
     commands = [step(sql, "Полный бэкап", timeout=0)]
+    commands[0]['backup_path'] = target
     if verify:
         commands.append(step(f"RESTORE VERIFYONLY FROM DISK = {literal(target)} WITH CHECKSUM, STATS = 1;", "Проверка бэкапа", timeout=0))
     commands.append(step(f"BEGIN TRY RESTORE HEADERONLY FROM DISK = {literal(target)}; END TRY "

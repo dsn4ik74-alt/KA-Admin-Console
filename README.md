@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.31-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.31)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.31)
+[![Версия](https://img.shields.io/badge/версия-20.33.32-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.32)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.32)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.31-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.31/KA-Admin-Console-20.33.31.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.32-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.32/KA-Admin-Console-20.33.32.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -37,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.32** — текущий размер создаваемого бэкапа обновляется примерно раз в секунду отдельной строкой: PostgreSQL, DT, MSSQL и «бэкап + восстановление». У каталога `.pgdir` показывается суммарный размер файлов; по SSH измерение выполняется на Linux. Для MSSQL нужен SQL Server 2017+ с доступом к файловой метаинформации; при недоступности измерения бэкап продолжается.
 
 **20.33.31** — ускорена проверка лицензий ring: «Проверить все» и «Проверить выбранные» используют загруженный список и сведения, выполняя новую проверку привязки. Полный поиск запускается кнопкой «Получить / обновить список». Работает локально и на удалённых Windows / Linux.
 
