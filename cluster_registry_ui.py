@@ -6,7 +6,8 @@ from tkinter import filedialog, ttk
 from uuid import UUID
 
 from branding import tk_icon
-from cluster_registry import read_registry, parameters
+from cluster_registry import read_registry, parameters, property_meaning
+from cluster_registry_local import find_local_registry
 from infobase_address import infobase_address
 from ui_geometry import delayed_wrap
 
@@ -25,7 +26,7 @@ def show_base_properties(app, row, parent=None):
 
 class BaseProperties:
     def __init__(self,app,row,parent=None):
-        self.app,self.row=app,row;self.busy=False;self.snapshot=None;self._generation=0
+        self.app,self.row=app,row;self.busy=False;self.snapshot=None;self._generation=0;self.source_note=''
         c=app.colors
         self.window=window=tk.Toplevel(parent or app.root)
         window.title('Свойства базы · '+row.get('base',''));window.geometry('940x700');window.minsize(640,480)
@@ -47,9 +48,10 @@ class BaseProperties:
         source=tk.Frame(frame,bg=c['panel']);source.pack(fill=tk.X)
         self.path=tk.StringVar()
         app._entry(source,self.path).pack(side=tk.LEFT,fill=tk.X,expand=True,padx=(0,6))
+        self.find_button=app._button(source,'Найти локально',self.find_local);self.find_button.pack(side=tk.LEFT,padx=(0,6))
         self.choose_button=app._button(source,'Выбрать файл…',self.choose);self.choose_button.pack(side=tk.LEFT,padx=(0,6))
-        self.reload_button=app._button(source,'Обновить из файла',self.load);self.reload_button.pack(side=tk.LEFT)
-        self.status=app._label(frame,'Один раз выберите 1CV8Clst.lst для этого кластера: локальный файл или UNC-путь.',9,'muted',
+        self.reload_button=app._button(source,'Обновить',self.load);self.reload_button.pack(side=tk.LEFT)
+        self.status=app._label(frame,'Поиск по запущенным службам локального сервера или выбор файла вручную.',9,'muted',
                                anchor='w',wraplength=830,justify=tk.LEFT)
         self.status.pack(fill=tk.X,pady=(7,9))
         delayed_wrap(self.status)
@@ -59,9 +61,10 @@ class BaseProperties:
                        bg=c['panel'],fg=c['fg'],selectcolor=c['panel'],bd=0).pack(anchor='w',pady=(0,7))
         area=tk.Frame(frame,bg=c['panel']);area.pack(fill=tk.BOTH,expand=True)
         area.rowconfigure(0,weight=1);area.columnconfigure(0,weight=1)
-        self.tree=ttk.Treeview(area,columns=('value',),show='tree headings',selectmode='browse')
-        self.tree.heading('#0',text='Свойство · индекс поля от 0');self.tree.column('#0',width=330,minwidth=190)
-        self.tree.heading('value',text='Значение');self.tree.column('value',width=490,minwidth=220)
+        self.tree=ttk.Treeview(area,columns=('value','meaning'),show='tree headings',selectmode='browse')
+        self.tree.heading('#0',text='Свойство · индекс поля от 0');self.tree.column('#0',width=295,minwidth=170)
+        self.tree.heading('value',text='Значение');self.tree.column('value',width=190,minwidth=80)
+        self.tree.heading('meaning',text='Расшифровка');self.tree.column('meaning',width=360,minwidth=180)
         self.tree.grid(row=0,column=0,sticky='nsew')
         vertical=ttk.Scrollbar(area,command=self.tree.yview);vertical.grid(row=0,column=1,sticky='ns')
         horizontal=ttk.Scrollbar(area,orient=tk.HORIZONTAL,command=self.tree.xview);horizontal.grid(row=1,column=0,sticky='ew')
@@ -79,7 +82,68 @@ class BaseProperties:
         if cached:self.show(cached)
         path=saved.get(row['cluster_id'],'') if isinstance(saved,dict) else ''
         if cached:path=cached.path
-        if path:self.path.set(path);self.load()
+        if path:self.path.set(path)
+        self.find_local(automatic=True,fallback=path)
+
+    def begin_read(self,text):
+        self.busy=True;self.snapshot=None;self.source_note='';self._generation+=1
+        for button in (self.find_button,self.choose_button,self.reload_button):button.configure(state=tk.DISABLED)
+        self.tree.delete(*self.tree.get_children());self.selection_changed()
+        self.jobs.configure(text='Регламентные задания: чтение файла…',fg=self.app.colors['muted'])
+        self.status.configure(text=text,fg=self.app.colors['muted'])
+        return self._generation
+
+    def finish_read(self,generation):
+        try:
+            if not self.window.winfo_exists() or generation!=self._generation:return False
+        except tk.TclError:return False
+        self.busy=False
+        for button in (self.find_button,self.choose_button,self.reload_button):button.configure(state=tk.NORMAL)
+        return True
+
+    def find_local(self,automatic=False,fallback=''):
+        if self.busy:return
+        generation=self.begin_read('Поиск реестра по порту и запущенной службе ragent…')
+        row=dict(self.row)
+        def worker():
+            try:result=find_local_registry(row)
+            except (OSError,ValueError) as exc:result=(True,[],str(exc))
+            except Exception:result=(True,[],'Не удалось проверить локальные службы 1С.')
+            self.app._post(self.found_local,generation,result,automatic,fallback)
+        threading.Thread(target=worker,daemon=True).start()
+
+    def found_local(self,generation,result,automatic=False,fallback=''):
+        if not self.finish_read(generation):return
+        local,found,message=result
+        if not local:
+            if automatic and fallback:self.path.set(fallback);self.load();return
+            message='Автопоиск доступен для серверов этого компьютера. Выберите файл или UNC-путь вручную.'
+        if len(found)==1:self.use_found(found[0]);return
+        self.jobs.configure(text='Регламентные задания: выберите реестр',fg=self.app.colors['muted'])
+        self.status.configure(text=message,fg=self.app.colors['muted'])
+        if len(found)>1:self.choose_found(found)
+
+    def use_found(self,found):
+        self.source_note='Запущенная служба: '+found.service+' · порт агента '+str(found.agent_port)
+        self.path.set(found.snapshot.path);self.loaded(self._generation,found.snapshot)
+
+    def choose_found(self,found):
+        generation=self._generation
+        choice=tk.Toplevel(self.window);choice.title('Выберите реестр запущенной службы 1С');choice.geometry('820x290')
+        choice.transient(self.window);tk_icon(choice)
+        frame=tk.Frame(choice,bg=self.app.colors['panel'],padx=12,pady=12);frame.pack(fill=tk.BOTH,expand=True)
+        self.app._label(frame,'Совпали порт и UUID. Выберите нужный источник.',10,anchor='w').pack(fill=tk.X)
+        def accept(event=None):
+            selected=tree.selection()
+            if selected and self.window.winfo_exists() and generation==self._generation and not self.busy:
+                self.use_found(found[int(selected[0])]);choice.destroy()
+        self.app._button(frame,'Выбрать',accept,primary=True).pack(side=tk.BOTTOM,anchor='e',pady=(8,0))
+        tree=ttk.Treeview(frame,columns=('service','path'),show='headings',selectmode='browse')
+        tree.heading('service',text='Запущенная служба');tree.column('service',width=240)
+        tree.heading('path',text='Файл реестра');tree.column('path',width=520)
+        tree.pack(fill=tk.BOTH,expand=True)
+        for index,item in enumerate(found):tree.insert('',tk.END,iid=str(index),values=(item.service,item.snapshot.path))
+        tree.bind('<Double-1>',accept);choice.bind('<Escape>',lambda event:choice.destroy())
 
     def choose(self):
         if self.busy:return
@@ -92,11 +156,7 @@ class BaseProperties:
         path=self.path.get().strip()
         if not path:
             self.status.configure(text='Выберите файл 1CV8Clst.lst или введите его полный путь.',fg=self.app.colors['danger']);return
-        self.busy=True;self.snapshot=None;self._generation+=1;generation=self._generation
-        self.choose_button.configure(state=tk.DISABLED);self.reload_button.configure(state=tk.DISABLED)
-        self.tree.delete(*self.tree.get_children());self.jobs.configure(text='Регламентные задания: чтение файла…',fg=self.app.colors['muted'])
-        self.selection_changed()
-        self.status.configure(text='Чтение реестра…',fg=self.app.colors['muted'])
+        generation=self.begin_read('Чтение реестра…')
         def worker():
             try:
                 snapshot=read_registry(path)
@@ -109,10 +169,7 @@ class BaseProperties:
         threading.Thread(target=worker,daemon=True).start()
 
     def loaded(self,generation,snapshot,error=''):
-        try:
-            if not self.window.winfo_exists() or generation!=self._generation:return
-        except tk.TclError:return
-        self.busy=False;self.choose_button.configure(state=tk.NORMAL);self.reload_button.configure(state=tk.NORMAL)
+        if not self.finish_read(generation):return
         if error:
             self.jobs.configure(text='Регламентные задания: данные файла не загружены',fg=self.app.colors['muted'])
             self.status.configure(text=error,fg=self.app.colors['danger']);return
@@ -132,6 +189,7 @@ class BaseProperties:
                             fg=self.app.colors['danger'] if denied is True else self.app.colors['success'] if denied is False else self.app.colors['muted'])
         timestamp=datetime.fromtimestamp(snapshot.mtime).strftime('%d.%m.%Y %H:%M:%S') if snapshot.mtime else 'не определено'
         note='Файл: '+snapshot.path+' · изменён '+timestamp+' · '+snapshot.host+':'+str(snapshot.port)
+        if self.source_note:note+=' · '+self.source_note
         mismatch=False
         try:
             stored=parameters(record.values[8]).get('schjobdn','').casefold()
@@ -147,11 +205,13 @@ class BaseProperties:
         self.tree.delete(*self.tree.get_children())
         self.selection_changed()
         for index,label,value in record.properties(show_codes=self.show_codes.get()):
-            parent=self.tree.insert('',tk.END,text='['+str(index)+'] '+label,values=('' if isinstance(value,tuple) else value,))
+            parent=self.tree.insert('',tk.END,text='['+str(index)+'] '+label,
+                values=('' if isinstance(value,tuple) else value,property_meaning(record,index,value)))
             if isinstance(value,tuple):
                 for child,item in enumerate(value):
                     child_label,child_value=item if isinstance(item,tuple) and len(item)==2 else ('Поле',item)
-                    self.tree.insert(parent,tk.END,text='['+str(child)+'] '+str(child_label),values=(str(child_value),))
+                    self.tree.insert(parent,tk.END,text='['+str(child)+'] '+str(child_label),values=(str(child_value),
+                        property_meaning(record,index,str(child_value),child_label if index==8 else child)))
                 self.tree.item(parent,open=True)
 
     def selection_changed(self,event=None):
@@ -159,5 +219,5 @@ class BaseProperties:
         text=''
         if selected:
             row=self.tree.item(selected[0]);values=row.get('values',())
-            text=row['text']+'\n'+(str(values[0]) if values else '')
+            text=row['text']+'\n'+' · '.join(str(value) for value in values)
         self.detail.configure(state=tk.NORMAL);self.detail.delete('1.0',tk.END);self.detail.insert('1.0',text);self.detail.configure(state=tk.DISABLED)

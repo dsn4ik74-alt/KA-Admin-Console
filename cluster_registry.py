@@ -87,6 +87,48 @@ def boolean(value):
     return True if value == '1' else False if value == '0' else None
 
 
+def flag_meaning(value, enabled='Включено', disabled='Выключено'):
+    return enabled if value in ('1','Y','y') else disabled if value in ('0','N','n') else 'Неизвестное значение флага'
+
+
+def property_meaning(record,index,value,child=None):
+    """Explain only verified fields. Retain all original codes in the value column."""
+    if index >= 9 and not record.known_layout:return 'Назначение поля для этой схемы не подтверждено'
+    if index == 8 and child is not None:
+        key=str(child).casefold()
+        if key == 'schjobdn':return flag_meaning(value,'Задания запрещены · сохранённая строка','Задания разрешены · сохранённая строка')
+        if key == 'sqlyoffs':return {'0':'Без смещения дат SQL Server','2000':'Смещение дат SQL Server на 2000 лет'}.get(value,'Неизвестное смещение дат')
+        if key in ('dbpwd','pwd','password','srvrpwd','susrpwd'):return 'Пароль скрыт'
+        known={'db':'Имя базы в СУБД','dbms':'Тип СУБД','dbsrvr':'Сервер СУБД','dbuid':'Пользователь СУБД',
+                'srvr':'Адрес кластера 1С','ref':'Имя ИБ в кластере','locale':'Язык и страна','descr':'Описание'}.get(key,'Параметр сохранённой строки подключения')
+        return 'Назначение числового параметра не подтверждено' if known=='Параметр сохранённой строки подключения' and str(value).isdigit() else known
+    if index == 10 and child is not None:
+        if child == 0:return flag_meaning(value,'Новые сеансы запрещены','Новые сеансы разрешены')
+        if child in (1,2):
+            if value in ('','00010101000000'):return 'Дата не задана'
+            if re.fullmatch(r'\d{14}',str(value)):
+                from datetime import datetime
+                try:return datetime.strptime(value,'%Y%m%d%H%M%S').strftime('%d.%m.%Y %H:%M:%S')
+                except ValueError:pass
+            return 'Дата в исходном формате реестра'
+        return {3:'Сообщение при блокировке входа',4:'Код разрешения входа при блокировке',
+                5:'Параметр блокировки'}.get(child,'Назначение дополнительного поля не подтверждено')
+    if index == 9:return {'0':'Защищённое соединение выключено','1':'Защита при установке соединения',
+                           '2':'Защита в течение всего сеанса'}.get(value,'Неизвестный уровень защиты')
+    if index == 11:return flag_meaning(value,'Блокировка включена · задания запрещены','Блокировка выключена · задания разрешены')
+    if index == 12:return flag_meaning(value,'Выдача лицензий разрешена','Выдача лицензий запрещена')
+    if index == 14:return flag_meaning(value,'Внешнее управление обязательно','Внешнее управление необязательно')
+    if index == 18:return flag_meaning(value,'Резервирование включено','Резервирование выключено')
+    if index == 17:return 'Внутренний номер записи · это не флаг 0/1'
+    if index >= len(LABELS):return 'Назначение дополнительного поля в этой версии не подтверждено'
+    if value == '':return 'Не задано'
+    return {0:'Уникальный идентификатор ИБ',1:'Имя регистрации в кластере',2:'Описание ИБ',3:'Тип СУБД',
+            4:'Адрес сервера СУБД',5:'Имя базы на сервере СУБД',6:'Учётная запись подключения 1С к СУБД',
+            7:'Исходный пароль не восстанавливается',8:'Сохранённые параметры · могут отличаться от текущих',
+            10:'Блокировка входа новых сеансов',13:'Адрес внешнего управления сеансами',
+            15:'Имя профиля безопасности',16:'Имя профиля безопасного режима'}.get(index,'')
+
+
 @dataclass(frozen=True, repr=False)
 class RegistryBase:
     uuid: str
