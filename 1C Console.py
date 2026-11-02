@@ -49,10 +49,11 @@ from web_publication_ui import WebPublicationPanel
 from ring_license_ui import RingLicensePanel
 from file_transfer_ui import FileTransferPanel
 from workspace_tabs import WorkspaceTabStrip, split_legacy_tabs, page_title
+from cluster_registry_ui import show_base_properties
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.32"
+APP_VERSION = "20.33.33"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -1206,6 +1207,8 @@ class App:
         self.tree.selection_set(iid)
         menu = self.base_context_menu
         menu.delete(0, tk.END)
+        menu.add_command(label='Свойства базы…',command=lambda: self._base_context_action(iid, row, 'properties'))
+        menu.add_separator()
         available = (not self._table_busy() and not self.cluster_infobase.running and
                      row.get('cluster_id') and row.get('infobase_id'))
         menu.add_command(label='Удалить из кластера…', state=tk.NORMAL if available else tk.DISABLED,
@@ -1221,6 +1224,8 @@ class App:
         if self.mode != 'bases' or int(iid) >= len(self._visible_items) or self._visible_items[int(iid)] is not row:
             self._panel_error(None, 'Список баз изменился. Откройте меню базы заново.')
             return
+        if action == 'properties':
+            return show_base_properties(self,row)
         if action == 'copy':
             self.root.clipboard_clear()
             self.root.clipboard_append(row.get('base', ''))

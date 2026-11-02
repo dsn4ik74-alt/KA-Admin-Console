@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.32-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.32)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.32)
+[![Версия](https://img.shields.io/badge/версия-20.33.33-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.33)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.33)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.32-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.32/KA-Admin-Console-20.33.32.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.33-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.33/KA-Admin-Console-20.33.33.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -37,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.33** — ПКМ → «Свойства базы…» в списках ИБ. Один раз укажите `1CV8Clst.lst` кластера: параметры СУБД, блокировки заданий и сеансов, профили и дополнительные поля доступны для просмотра. Сопоставление по UUID, дата снимка и расхождения с сохранённой строкой подключения видны в окне. Файл не изменяется; пароль СУБД остаётся зашифрованным.
 
 **20.33.32** — текущий размер создаваемого бэкапа обновляется примерно раз в секунду отдельной строкой: PostgreSQL, DT, MSSQL и «бэкап + восстановление». У каталога `.pgdir` показывается суммарный размер файлов; по SSH измерение выполняется на Linux. Для MSSQL нужен SQL Server 2017+ с доступом к файловой метаинформации; при недоступности измерения бэкап продолжается.
 

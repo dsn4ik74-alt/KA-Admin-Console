@@ -7,6 +7,7 @@ from administration_ui import JobPanel
 from table_sorting import TableSorter
 from ui_geometry import delayed_wrap
 from infobase_address import infobase_address
+from cluster_registry_ui import show_base_properties
 
 
 class ClusterInfobasePanel(JobPanel):
@@ -107,6 +108,8 @@ class ClusterInfobasePanel(JobPanel):
         self.address_copy_button.configure(font=('Segoe UI', 9), padx=7, pady=3)
         self.address_copy_button.grid(row=0, column=1, padx=(6, 0))
         self.tree.bind('<<TreeviewSelect>>', lambda event: self.update_context())
+        self.tree.bind('<Button-3>',self.base_context)
+        self.base_menu=tk.Menu(self.tree,tearoff=False)
         search_bar = tk.Frame(header, bg=colors['panel'])
         search_bar.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(8, 0))
         search_bar.columnconfigure(1, weight=1)
@@ -119,6 +122,21 @@ class ClusterInfobasePanel(JobPanel):
         self.base_count.grid(row=0, column=2, padx=(8, 0))
         self.base_search.trace_add('write', lambda *args: self.render_bases(self.bases))
         self.update_base_actions()
+
+    def base_context(self,event):
+        iid=self.tree.identify_row(event.y)
+        if not iid:return 'break'
+        self.tree.selection_set(iid)
+        base=self.selected_base();cluster=self.selected_cluster();target=self.target()
+        if not base or not cluster or not target:return 'break'
+        row=dict(base=base.get('name',''),cluster_id=cluster['cluster'],infobase_id=base['infobase'],
+                 cluster_host=cluster.get('host',''),cluster_port=cluster.get('port',''),
+                 server=target['server'],port=target['port'],scheduled_jobs_deny=base.get('scheduled_jobs_deny'))
+        self.base_menu.delete(0,tk.END)
+        self.base_menu.add_command(label='Свойства базы…',command=lambda:show_base_properties(self.app,row,self.winfo_toplevel()))
+        try:self.base_menu.tk_popup(event.x_root,event.y_root)
+        finally:self.base_menu.grab_release()
+        return 'break'
 
     def toggle_ib_auth(self):
         if self.running:
