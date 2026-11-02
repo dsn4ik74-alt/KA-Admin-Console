@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.28-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.28)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.28)
+[![Версия](https://img.shields.io/badge/версия-20.33.29-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.29)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.29)
 
-[![Скачать EXE](https://img.shields.io/badge/↓_Скачать_для_Windows-20.33.28-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.28/KA-Admin-Console-20.33.28.exe)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.29-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.29/KA-Admin-Console-20.33.29.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -20,8 +20,8 @@
 
 ## Начать работу
 
-1. Скачайте **EXE** по кнопке выше — устанавливать Python не требуется.
-2. Запустите приложение и подтвердите запрос прав администратора.
+1. Скачайте **ZIP** по кнопке выше и распакуйте EXE — устанавливать Python не требуется.
+2. Запустите EXE и подтвердите запрос прав администратора.
 3. Выберите раздел и укажите параметры подключения к вашему серверу.
 
 ## Возможности
@@ -37,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.29** — рабочие вкладки открываются сверху, как в браузере. Каждый щелчок по действию слева создаёт новую форму; верхние вкладки переключаются, закрываются и перетаскиваются. Выполняющиеся задачи отмечаются зелёной точкой. Старые дополнительные пункты слева переносятся наверх. В Releases теперь ZIP с максимальным стандартным сжатием, внутри только EXE.
 
 **20.33.28** — вкладка **«1С → Лицензии 1С · ring»**: список, сведения, поиск, проверка выбранных или всех программных лицензий. Локально в Windows, удалённо Windows (WinRM + SMB) и Linux x86-64 (SSH). Ring, License Tools и отдельная Java встроены; временный комплект на сервере удаляется после проверки. Активация и изменение лицензий не выполняются. Свободные места, HASP и подписка ИТС этой утилитой не определяются.
 

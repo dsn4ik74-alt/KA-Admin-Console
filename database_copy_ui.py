@@ -75,7 +75,7 @@ def compact_copy_title(panel, compact):
 def install_new_copy_tab(panel):
     # Remains usable while this particular panel's operation locks its inputs.
     panel.new_task_button = panel.app._button(panel.actions, '+ Новая вкладка',
-        lambda:panel.app.bookmarks._duplicate_tab(panel._page_key))
+        lambda:panel.app._open_workspace(panel._page_kind))
     panel.new_task_button.pack(side=tk.RIGHT, padx=(0,8), before=panel.cancel_button)
 
 

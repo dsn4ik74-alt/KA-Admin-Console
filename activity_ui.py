@@ -440,7 +440,7 @@ class HomePanel(tk.Frame):
         quick.pack(fill=tk.X, padx=22, pady=(0, 10))
         app._label(quick, 'Рабочий обзор', 18, bold=True).pack(side=tk.LEFT, padx=(0, 18))
         for title, mode in (('SQL Server', 'db_backup'), ('PostgreSQL', 'pg_dump'), ('Кластер 1С', 'cluster_infobase')):
-            app._button(quick, title, lambda page=mode: app._switch_mode(page)).pack(side=tk.RIGHT, padx=(6, 0))
+            app._button(quick, title, lambda page=mode: app._open_workspace(page)).pack(side=tk.RIGHT, padx=(6, 0))
         self.metrics = {}
         self.metric_strip = tk.Frame(self, bg=app.colors['bg'])
         self.metric_strip.pack(fill=tk.X, padx=22, pady=(3, 16))

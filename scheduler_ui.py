@@ -375,7 +375,7 @@ class SchedulerPanel(tk.Frame):
         except (ValueError,KeyError,TypeError) as exc:
             self.app._panel_error(panel,str(exc));return
         self.add_step(step)
-        self.app._switch_mode('scheduler')
+        self.app._switch_mode('scheduler',self._page_key)
         self.steps_tree.selection_set(str(len(self.steps)-1))
         self.notice.configure(text='Действие добавлено. Задайте время и сохраните последовательность.',fg=self.c['fg'])
 
@@ -406,7 +406,7 @@ class SchedulerPanel(tk.Frame):
             step['parameters']=bundle_paths(step['parameters'])
             validate_step(step);step['summary']=describe(step)
         except (ValueError,KeyError,TypeError) as exc:self.app._panel_error(panel,str(exc));return
-        self.add_step(step);self.app._switch_mode('scheduler')
+        self.add_step(step);self.app._switch_mode('scheduler',self._page_key)
 
     def action_menu(self):
         menu=tk.Menu(self,tearoff=False)
@@ -416,7 +416,8 @@ class SchedulerPanel(tk.Frame):
         menu.tk_popup(self.winfo_pointerx(),self.winfo_pointery())
 
     def configure_action(self,page):
-        self.app._switch_mode(page)
+        self.app._schedule_target=self
+        self.app._open_workspace(page)
         self.app._status('Настройте действие и нажмите «В планировщик ▾». Оно добавится в текущую последовательность.')
 
     def command_step(self):
@@ -663,13 +664,14 @@ def install_schedule_button(panel, scheduler):
     def menu():
         action=getattr(panel,'mode',getattr(panel,'_page_kind',mode))
         popup=tk.Menu(button,tearoff=False)
-        popup.add_command(label='Добавить текущее действие',command=lambda:scheduler.queue_step(panel,action))
+        def target():return getattr(panel.app,'_schedule_target',scheduler)
+        popup.add_command(label='Добавить текущее действие',command=lambda:target().queue_step(panel,action))
         if action=='cluster_infobase':
             for extra in ('cluster_drop','cluster_jobs'):
-                popup.add_command(label=LABELS[extra],command=lambda extra=extra:scheduler.queue_step(panel,extra))
+                popup.add_command(label=LABELS[extra],command=lambda extra=extra:target().queue_step(panel,extra))
         if action.startswith(('db_','pg_','ibcmd_')):
             prefix='pg_' if hasattr(panel,'host') else 'sql_'
             for side,title in (('source','источника'),('target','получателя')) if hasattr(panel,'target_tree') else (('source',''),):
-                popup.add_command(label='Создать базу '+title+'…',command=lambda side=side:scheduler.database_action(panel,prefix+'create',side))
-                popup.add_command(label='Удалить выбранную базу '+title+'…',command=lambda side=side:scheduler.database_action(panel,prefix+'delete',side))
+                popup.add_command(label='Создать базу '+title+'…',command=lambda side=side:target().database_action(panel,prefix+'create',side))
+                popup.add_command(label='Удалить выбранную базу '+title+'…',command=lambda side=side:target().database_action(panel,prefix+'delete',side))
         popup.tk_popup(button.winfo_rootx(),button.winfo_rooty()+button.winfo_height())

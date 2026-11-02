@@ -277,6 +277,7 @@ class BookmarkBar(tk.Frame):
         self.vertical = vertical
         self.c, self.activate, self.changed = colors, activate, changed
         self.activate_tab = self.can_close_tab = None
+        self.open_workspace = self.close_workspace = None
         self.layout = NavigationLayout(saved)
         self.enabled = True
         self.active = "servers"
@@ -749,6 +750,8 @@ class BookmarkBar(tk.Frame):
         if not self.enabled:
             return
         self._escape()
+        if self.open_workspace:
+            self.open_workspace();return
         current = self.layout.find(self.active)
         page = current.get('page', self.active) if current else self.active
         dialog = TabDialog(self.winfo_toplevel(), self.c, page)
@@ -760,6 +763,8 @@ class BookmarkBar(tk.Frame):
             self._activate_node(self.layout.find(key))
 
     def _close_tab(self, key):
+        if self.close_workspace:
+            self.close_workspace(key);return
         if self.can_close_tab and not self.can_close_tab(key):
             return
         if self.enabled and self.layout.remove_tab(key):
@@ -771,6 +776,8 @@ class BookmarkBar(tk.Frame):
             return
         page = node.get('page', key)
         title = node['title']
+        if self.open_workspace:
+            self.open_workspace(page,title=title);return
         titles = {entry['title'] for entry, _ in self.layout.walk()}
         number = 2
         while title + ' · ' + str(number) in titles:

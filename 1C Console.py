@@ -48,10 +48,11 @@ from ui_theme import COLORS, WorkspaceSidebar, apply_styles
 from web_publication_ui import WebPublicationPanel
 from ring_license_ui import RingLicensePanel
 from file_transfer_ui import FileTransferPanel
+from workspace_tabs import WorkspaceTabStrip, split_legacy_tabs, page_title
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.28"
+APP_VERSION = "20.33.29"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -187,6 +188,9 @@ class App:
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.bind("<Control-f>", self._focus_search)
         self.root.bind("<F5>", lambda event: self._on_update_clicked())
+        self.root.bind('<Control-Tab>',lambda event:self._cycle_workspace(1))
+        self.root.bind('<Control-Shift-Tab>',lambda event:self._cycle_workspace(-1))
+        self.root.bind('<Control-w>',lambda event:self.workspace_tabs.request_close(self._active_tab_key))
         self._event_job = self.root.after(50, self._drain_events)
         self._switch_mode('home')
         self._discover(startup=True)
@@ -286,10 +290,23 @@ class App:
         self.favorites_button.pack(side=tk.RIGHT, padx=6)
         self.btn_update = self._button(navigation, "Обновить", self._on_update_clicked, primary=True)
         self.btn_update.pack(side=tk.RIGHT)
-        self.bookmarks = BookmarkBar(self.sidebar.folder_host, C, self._settings.get("navigation_layout"),
-                                     self._switch_mode, self._save_navigation, vertical=True)
-        self.bookmarks.activate_tab = self._switch_mode
+        saved_navigation,legacy_tabs=split_legacy_tabs(self._settings.get('navigation_layout'))
+        if legacy_tabs and 'navigation_layout_before_workspace_tabs' not in self._settings:
+            self._settings['navigation_layout_before_workspace_tabs']=self._settings.get('navigation_layout')
+        self.bookmarks = BookmarkBar(self.sidebar.folder_host, C, saved_navigation,
+                                     self._open_workspace, self._save_navigation, vertical=True)
+        self.bookmarks.activate_tab = self._open_workspace
         self.bookmarks.can_close_tab = self._can_close_tab
+        self.bookmarks.open_workspace = self._pick_workspace
+        self.bookmarks.close_workspace = self._close_workspace
+        self.bookmarks.tab_button.pack_forget()
+        saved_workspaces=self._settings.get('workspace_tabs',[])
+        saved_workspaces=(saved_workspaces if isinstance(saved_workspaces,list) else [])+legacy_tabs
+        self.workspace_tabs=WorkspaceTabStrip(self.root,C,saved_workspaces,self._activate_workspace,
+            self._close_workspace,self._pick_workspace,self._save_workspaces)
+        self._settings['workspace_tabs']=self.workspace_tabs.model.snapshot()
+        self.workspace_tabs.pack(fill=tk.X,padx=22,pady=(0,8),before=source)
+        self._table_views={}
         self.running_tasks = RunningTasks(navigation, C, self._switch_mode)
         self._settings["navigation_layout"] = self.bookmarks.layout.snapshot()
         self.bookmarks.pack(fill=tk.BOTH, expand=True)
@@ -390,6 +407,7 @@ class App:
         self.windirstat = WinDirStatPanel(self.root, self, C)
         self.home = HomePanel(self.root, self)
         self.scheduler = SchedulerPanel(self.root, self, C)
+        self._schedule_target = self.scheduler
         self._pages = {'accounts': self.accounts, 'jr_archive': self.archive,
                        **{mode: self.services for mode in SERVICE_MODES},
                        **{mode: self.sql for mode in SQL_MODES},
@@ -480,25 +498,40 @@ class App:
             if panel.running:
                 key, mode = panel._page_key, panel._page_kind
                 node = self.bookmarks.layout.find(key)
-                title = node['title'] if node else PAGES.get(mode, mode)
+                workspace=self.workspace_tabs.model.find(key)
+                title = workspace['title'] if workspace else node['title'] if node else PAGES.get(mode, mode)
                 tasks.append((key, title, lambda m=mode, k=key: self._switch_mode(m, k)))
         if self._table_busy():
             mode = 'bases' if self.search_running else 'servers'
-            tasks.append(('server-search', 'Поиск баз' if self.search_running else 'Поиск серверов', lambda: self._switch_mode(mode)))
+            key=getattr(self,'_rac_workspace_key','bases') if self.search_running else getattr(self,'_discovery_workspace_key','servers')
+            tasks.append(('server-search', 'Поиск баз' if self.search_running else 'Поиск серверов', lambda m=mode,k=key:self._switch_mode(m,k)))
         for key, job in self._opening_bases.items():
-            tasks.append((('open-base', key), 'Открытие: ' + job['row']['base'], lambda: self._switch_mode('bases')))
+            tasks.append((('open-base', key), 'Открытие: ' + job['row']['base'], lambda k=job.get('workspace','bases'):self._switch_mode('bases',k)))
         self.running_tasks.update_tasks(tasks)
+        running={panel._page_key for panel in set(self._pages.values()) if panel.running}
+        if self.search_running:running.add(getattr(self,'_rac_workspace_key','bases'))
+        if self._discovering:running.add(getattr(self,'_discovery_workspace_key','servers'))
+        running.update(job.get('workspace','bases') for job in self._opening_bases.values())
+        self.workspace_tabs.set_running(running)
         self.sidebar.set_active(self.mode)
 
     def _can_close_tab(self, key):
-        node = self.bookmarks.layout.find(key)
-        if node is None or 'page' not in node:
-            return True
         panel = self._pages.get(key)
+        workspace=self.workspace_tabs.model.find(key)
+        if workspace and workspace['mode'] in TABLES and (
+                self.search_running and key==getattr(self,'_rac_workspace_key',None) or
+                self._discovering and key==getattr(self,'_discovery_workspace_key',None) or
+                any(job.get('workspace')==key for job in self._opening_bases.values())):
+            self._status('Во вкладке выполняется операция. Дождитесь завершения или прервите её.');return False
         if panel and panel.running:
             self._status('Во вкладке выполняется операция. Дождитесь завершения или прервите её.')
             return False
-        if isinstance(panel, WinDirStatPanel) and not panel.close(lambda: self.bookmarks._close_tab(key)):
+        if isinstance(panel,SchedulerPanel):
+            if panel._saving or panel.configuring_background:
+                self._status('Дождитесь сохранения расписания или настройки фонового запуска.');return False
+            if panel.dirty and not messagebox.askyesno('Несохранённое расписание','Закрыть вкладку без сохранения расписания?',parent=self.root,default='no'):
+                return False
+        if isinstance(panel, WinDirStatPanel) and not panel.close(lambda: self._close_workspace(key)):
             return False
         if key == self._active_tab_key:
             self._switch_mode('home')
@@ -508,15 +541,83 @@ class App:
                 for entry in list(mapping):
                     if entry is panel or isinstance(entry, tuple) and entry[0] is panel:
                         mapping.pop(entry, None)
-            del self._pages[key]
-            panel.destroy()
+            if panel is self.scheduler:
+                if panel._built:panel.dirty=False;panel.new()
+            else:
+                if panel is self._schedule_target:self._schedule_target=self.scheduler
+                for alias in [name for name,value in self._pages.items() if value is panel]:del self._pages[alias]
+                panel.destroy()
         return True
+
+    def _save_workspaces(self,entries):
+        self._settings['workspace_tabs']=entries
+        self._save_settings()
+
+    def _workspace_breadcrumb(self,key):
+        row=self.workspace_tabs.model.find(key)
+        return (self.bookmarks.breadcrumb(row['mode']) or row['title']) if row else self.bookmarks.breadcrumb(key)
+
+    def _open_workspace(self,mode,source_id=None,title=None):
+        if mode=='home':self._switch_mode('home');return 'home'
+        node=self.bookmarks.layout.find(source_id) if source_id else None
+        key=self.workspace_tabs.add(mode,title or (node['title'] if node and node['title']!=PAGES.get(mode) else None))
+        self._switch_mode(mode,key)
+        return key
+
+    def _activate_workspace(self,key):
+        if key=='home':self._switch_mode('home');return
+        row=self.workspace_tabs.model.find(key)
+        if row:self._switch_mode(row['mode'],key)
+
+    def _close_workspace(self,key):
+        if key=='home':return False
+        row=self.workspace_tabs.model.find(key)
+        if row is None:return False
+        index=self.workspace_tabs.model.entries.index(row);was_active=key==self._active_tab_key
+        if not self._can_close_tab(key):return False
+        self.workspace_tabs.remove(key);self._table_views.pop(key,None)
+        if was_active:
+            remaining=self.workspace_tabs.model.entries
+            self._activate_workspace(remaining[min(index,len(remaining)-1)]['key'] if remaining else 'home')
+        return True
+
+    def _cycle_workspace(self,direction):
+        keys=['home']+[row['key'] for row in self.workspace_tabs.model.entries]
+        index=keys.index(self._active_tab_key) if self._active_tab_key in keys else 0
+        self._activate_workspace(keys[(index+direction)%len(keys)])
+        return 'break'
+
+    def _pick_workspace(self,mode=None,title=None):
+        if mode in PAGES:return self._open_workspace(mode,title=title)
+        self.bookmarks._escape()
+        old=getattr(self,'_workspace_picker',None)
+        if old:old.destroy()
+        menu=self._workspace_picker=tk.Menu(self.root,tearoff=False,bg=C['panel'],fg=C['fg'])
+        def populate(target,nodes):
+            for node in nodes:
+                if 'children' in node:
+                    child=tk.Menu(target,tearoff=False);populate(child,node['children']);target.add_cascade(label=node['title'],menu=child)
+                else:target.add_command(label=node['title'],command=lambda n=node:self._open_workspace(n.get('page',n['id']),n['id']))
+        populate(menu,self.bookmarks.layout.nodes)
+        button=self.workspace_tabs.plus
+        try:menu.tk_popup(button.winfo_rootx(),button.winfo_rooty()+button.winfo_height())
+        finally:menu.grab_release()
+
+    def _table_row_key(self,row):
+        return self._base_identity(row) if self.mode=='bases' else (row.get('server','').casefold(),str(row.get('port','')),row.get('version',''))
+
+    def _remember_table_view(self):
+        if self.mode not in TABLES or not hasattr(self,'_active_tab_key'):return
+        selected=[self._table_row_key(self._visible_items[int(i)]) for i in self.tree.selection() if int(i)<len(self._visible_items)]
+        self._table_views[self._active_tab_key]=dict(search=self.search_var.get(),sort=self._sort_col,reverse=self._sort_reverse,
+            pin=self._base_pin,selected=selected,scroll=self.tree.yview()[0])
 
     def _create_page(self, mode, key):
         factory = (SqlPanel if mode in SQL_MODES else PostgresPanel if mode in PG_MODES else ServicesPanel if mode in SERVICE_MODES else
                    {'accounts': AccountsPanel, 'jr_archive': ArchivePanel, 'cluster_infobase': ClusterInfobasePanel,
                     'db_copy': SqlCopyPanel, 'pg_copy': PostgresCopyPanel, 'platform_install': PlatformInstallPanel,
                     'configuration_install': ConfigurationInstallPanel,
+                    'scheduler': SchedulerPanel,
                     'windirstat': WinDirStatPanel, 'postgres_install': PostgresInstallPanel, 'linux_disk': LinuxDiskPanel,
                     'web_publication':WebPublicationPanel,'file_transfer':FileTransferPanel,'ring_license':RingLicensePanel}.get(mode))
         if factory is None:
@@ -537,7 +638,7 @@ class App:
 
     def _save_navigation(self, layout):
         self._settings["navigation_layout"] = layout
-        self._navigation_hint.configure(text=self.bookmarks.breadcrumb(getattr(self, '_active_tab_key', self.mode)))
+        self._navigation_hint.configure(text=self._workspace_breadcrumb(getattr(self, '_active_tab_key', self.mode)))
         self._save_settings()
         if hasattr(self, '_pages'):
             self._set_busy()
@@ -700,7 +801,7 @@ class App:
         ras_port = self._settings.get('ras_ports', {}).get(str(target['server']) + ':' + str(target['port']), 1545)
         cancel = threading.Event()
         token = self.activity.begin(dict(operation='Запуск Конфигуратора 1С' if launch_mode=='DESIGNER' else 'Запуск клиента 1С', server=row['server'], database=row['base'], executor='Windows'))
-        self._opening_bases[key] = dict(row=row, cancel=cancel, messages=[], token=token)
+        self._opening_bases[key] = dict(row=row, cancel=cancel, messages=[], token=token,workspace=self._active_tab_key)
         self._clear_panel_error(None)
         self._status('Подготовка открытия базы: ' + row['base'])
         self._set_busy()
@@ -777,6 +878,7 @@ class App:
         if self._table_busy():
             return
         self._discovering = True
+        self._discovery_workspace_key=self._active_tab_key
         self._set_busy()
         self._status("Поиск appsrvrs.lst текущего пользователя…")
         def worker():
@@ -911,7 +1013,7 @@ class App:
         if self._filter_job:
             self.root.after_cancel(self._filter_job)
             self._filter_job = None
-        self.bookmarks.set_active(getattr(self, '_active_tab_key', self.mode))
+        self.bookmarks.set_active(self.mode)
         if self.mode not in TABLES:
             return
         # Allocate primary controls before the hint, which may shrink at high DPI.
@@ -974,6 +1076,12 @@ class App:
         self._update_open_actions()
     def _switch_mode(self, mode, tab_id=None):
         key = tab_id or mode
+        self._remember_table_view()
+        if mode!='home' and self.workspace_tabs.model.find(key) is None:
+            node=self.bookmarks.layout.find(key)
+            self.workspace_tabs.add(mode,node.get('title') if node else None,key)
+            if node and 'page' in node:
+                self.bookmarks.layout.remove_tab(key);self.bookmarks._commit()
         self.form_notice.pack_forget()
         self.progress.stop()
         self.progress.configure(mode='determinate', value=0)
@@ -994,6 +1102,7 @@ class App:
                     self._clear_panel_error(panel)
                 panel._page_key, panel._page_kind = key, mode
             self._active_panel = panel
+            if isinstance(panel,SchedulerPanel):self._schedule_target=panel
             # Keep the existing typed convenience references for shortcuts.
             alias = ('sql' if mode in SQL_MODES else 'postgres' if mode in PG_MODES else 'services' if mode in SERVICE_MODES else
                      {'accounts': 'accounts', 'jr_archive': 'archive', 'cluster_infobase': 'cluster_infobase',
@@ -1016,9 +1125,18 @@ class App:
         self._active_tab_key = key
         self.mode, self._sort_col, self._sort_reverse = mode, None, False
         self.home_button.configure(bg=C['selected'] if mode == 'home' else C['button'])
-        self._navigation_hint.configure(text='Главная' if mode == 'home' else self.bookmarks.breadcrumb(key))
-        self.search_var.set("")
+        self._navigation_hint.configure(text='Главная' if mode == 'home' else self._workspace_breadcrumb(key))
+        view=self._table_views.get(key,{}) if mode in TABLES else {}
+        self._sort_col,self._sort_reverse=view.get('sort'),view.get('reverse',False)
+        if mode in TABLES:self._base_pin=view.get('pin')
+        self.search_var.set(view.get('search',''))
         self._render()
+        if mode in TABLES and view:
+            selected=set(view.get('selected',[]))
+            self.tree.selection_set([str(i) for i,row in enumerate(self._visible_items) if self._table_row_key(row) in selected])
+            self.tree.yview_moveto(view.get('scroll',0))
+        self.workspace_tabs.set_active('home' if mode=='home' else key)
+        self.workspace_tabs.reveal(key)
         self._status({'windirstat': 'Оригинальный portable WinDirStat внутри вкладки · анализ дисков и папок Windows',
                       'postgres_install':'PostgreSQL с патчами 1С · ИТС → выбранный экземпляр Windows или Ubuntu/Debian',
                       'linux_disk':'Анализ занятого места на Linux по SSH · каталоги, крупные файлы и карта диска',
@@ -1174,6 +1292,7 @@ class App:
         self._ras_manager = manager
         self._clear_panel_error(None)
         self.search_running = True
+        self._rac_workspace_key=self._active_tab_key
         self._all_bases = []
         self._set_errors([])
         self._set_busy()
@@ -1312,10 +1431,11 @@ class App:
         if self._opening_bases:
             self._status('Дождитесь запуска клиента 1С или нажмите «Прервать открытие» во вкладке «ИБ».')
             return
-        if self.scheduler._saving or self.scheduler.configuring_background:
+        schedulers={panel for panel in self._pages.values() if isinstance(panel,SchedulerPanel)}
+        if any(panel._saving or panel.configuring_background for panel in schedulers):
             self._status('Дождитесь завершения сохранения расписания или настройки фонового запуска.')
             return
-        if self.scheduler.dirty and not messagebox.askyesno(
+        if any(panel.dirty for panel in schedulers) and not messagebox.askyesno(
                 'Несохранённое расписание', 'В планировщике есть несохранённые изменения. Закрыть консоль без их сохранения?',
                 parent=self.root, default='no'):
             return
