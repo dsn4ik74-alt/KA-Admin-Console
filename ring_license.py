@@ -43,6 +43,21 @@ def validate_payload(values):
     if any(not isinstance(n, str) or not NAME.fullmatch(n) or n.lower().endswith('.lic') for n in names):
         raise ValueError('Выберите лицензию из полученного списка')
     p['names'] = list(dict.fromkeys(names))
+    # Inventory data is presentation only. Validation always runs on the target.
+    # Bound the snapshot sent to a remote worker and re-read failed/oversized info.
+    cache = p.get('info_cache', {})
+    p['info_cache'] = {}
+    remaining = LIMIT
+    if p['action'] == 'check' and isinstance(cache, dict):
+        for name in p['names']:
+            info = cache.get(name)
+            if not isinstance(info, dict) or info.get('code') != 0 or not isinstance(info.get('text'), str):
+                continue
+            size = len(info['text'].encode('utf-8'))
+            if not info['text'] or size > remaining:
+                continue
+            p['info_cache'][name] = dict(code=0, text=info['text'])
+            remaining -= size
     return p
 
 
@@ -212,9 +227,14 @@ def inspect(prefix, values, event, cancel, environment=None, invoke=native):
             raise ValueError('Найдено более 1000 лицензий. Укажите отдельный каталог.')
         if not names and listing:
             event(dict(kind='warning',text='Имена лицензий в выводе ring не распознаны либо список пуст. Полный ответ приведён в журнале.'))
+    else:
+        event(dict(kind='stage',text='Проверка по загруженному списку: '+str(len(names))+
+                   '. Сведения из таблицы: '+str(len(p['info_cache']))+'.'))
     rows=[]
     for index, name in enumerate(names):
-        info=command('info',name)
+        if cancel.is_set():raise CheckCancelled('Проверка лицензий прервана')
+        info=p['info_cache'].get(name)
+        if info is None:info=command('info',name)
         check=command('validate',name) if p['action']=='check' else None
         row=summary_row(name,info,check);rows.append(row)
         event(dict(kind='license_row',row=row))

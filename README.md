@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.30-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.30)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.30)
+[![Версия](https://img.shields.io/badge/версия-20.33.31-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.31)
+[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.31)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.30-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.30/KA-Admin-Console-20.33.30.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.31-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.31/KA-Admin-Console-20.33.31.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -37,6 +37,8 @@
 Для ИТС нужна ваша учётная запись с доступом к выбранному дистрибутиву; для серверных операций — соответствующие права.
 
 ## Что изменилось
+
+**20.33.31** — ускорена проверка лицензий ring: «Проверить все» и «Проверить выбранные» используют загруженный список и сведения, выполняя новую проверку привязки. Полный поиск запускается кнопкой «Получить / обновить список». Работает локально и на удалённых Windows / Linux.
 
 **20.33.30** — исправлен запуск ring на Linux по SSH: в комплекте Java сохранены права исполнения. Перед проверкой лицензий проверяется запуск Java; при запрете `noexec` или недостаточных правах журнал показывает причину.
 

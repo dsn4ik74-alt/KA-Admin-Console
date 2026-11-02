@@ -108,9 +108,17 @@ try {
         $names=@([regex]::Matches($listing,'(?<![\w-])(\d{5,30}-\d{5,30})(?:\.lic)?(?![\w-])')|ForEach-Object {$_.Groups[1].Value}|Select-Object -Unique)
     }
     if ($names.Count -gt 1000) {throw 'Более 1000 лицензий; укажите отдельный каталог'}
+    if (@($p.names).Count -gt 0) {Emit 'stage' ('Проверка по загруженному списку: '+$names.Count)}
     $rows=@();$index=0
     foreach ($name in $names) {
-        License 'info' $name;$info=$script:lastLicenseResult;$check=$null
+        $info=$null;$check=$null
+        if ($p.action -eq 'check' -and $p.info_cache) {
+            $property=$p.info_cache.PSObject.Properties[[string]$name]
+            if ($property -and $property.Value.code -eq 0 -and $property.Value.text -is [string]) {
+                $info=@{code=0;text=[string]$property.Value.text}
+            }
+        }
+        if ($null -eq $info) {License 'info' $name;$info=$script:lastLicenseResult}
         if ($p.action -eq 'check') {License 'validate' $name;$check=$script:lastLicenseResult}
         $row=@{name=$name;info=$info;check=$check};$rows+=@($row)
         @{kind='license_raw_row';row=$row}|ConvertTo-Json -Compress -Depth 8

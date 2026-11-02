@@ -70,12 +70,13 @@ class RingLicensePanel(SshFields,JobPanel):
             bg=colors['row'],fg=colors['fg'],state=tk.DISABLED,selectbackground=colors['text_selected'])
         self.details.grid(row=0,column=0,sticky='nsew')
         detail_scroll=ttk.Scrollbar(detail,command=self.details.yview);detail_scroll.grid(row=0,column=1,sticky='ns');self.details.configure(yscrollcommand=detail_scroll.set)
-        self.rows={}
+        self.rows={};self.inventory_loaded=False
         self.tree.bind('<<TreeviewSelect>>',lambda event:self.selection_changed())
         self.tree.bind('<Double-1>',lambda event:self.tabs.select(detail) if self.tree.selection() else None)
         self.filter.trace_add('write',lambda *args:self.render())
         self.execution.trace_add('write',lambda *args:self.change_execution())
-        for variable in (self.path,self.win_host,self.win_user,self.win_port,self.win_ssl,self.ssh_host,self.ssh_port,self.ssh_user,self.elevate):
+        for variable in (self.path,self.win_host,self.win_user,self.win_port,self.win_ssl,self.win_password,
+                         self.ssh_host,self.ssh_port,self.ssh_user,self.ssh_password,self.ssh_use_key,self.ssh_key,self.sudo_password,self.elevate):
             variable.trace_add('write',lambda *args:self.invalidate())
         self.change_execution()
 
@@ -95,7 +96,7 @@ class RingLicensePanel(SshFields,JobPanel):
 
     def invalidate(self):
         if self.running:return
-        self.rows.clear();self.render();self.selection_changed()
+        self.rows.clear();self.inventory_loaded=False;self.render();self.selection_changed()
 
     def browse(self):
         if self.running or self.system()!='local':return
@@ -131,9 +132,15 @@ class RingLicensePanel(SshFields,JobPanel):
 
     def run_check(self,action,names=None):
         if self.running:return
+        if action=='check' and names is None:
+            if self.rows:names=list(self.rows)
+            elif self.inventory_loaded:
+                self.app._panel_error(self,'Загруженный список лицензий пуст. При необходимости нажмите «Получить / обновить список».');return
+        cache={name:dict(code=row['info_code'],text=row['info']) for name in (names or [])
+               if (row:=self.rows.get(name)) is not None}
         try:
             system=self.system();connection=self.connection()
-            values=validate_payload(dict(action=action,path=self.path.get(),names=names or []))
+            values=validate_payload(dict(action=action,path=self.path.get(),names=names or [],info_cache=cache))
             if system=='windows':
                 from ring_license_jobs import validate_windows
                 validate_windows(connection)
@@ -142,10 +149,11 @@ class RingLicensePanel(SshFields,JobPanel):
                 connection=ssh_settings(connection)
         except (ValueError,KeyError) as exc:
             self.app._panel_error(self,str(exc));return
-        if not names:self.rows.clear();self.render()
+        if not names:self.rows.clear();self.inventory_loaded=False;self.render()
         elevate=self.elevate.get() if system=='linux' else False
         def ready(result):
             for row in result['rows']:self.rows[row['name']]=row
+            if not names:self.inventory_loaded=True
             self.render();self.selection_changed()
             if system=='linux':self.app.saved_servers.remember_ssh(self,connection)
             failed=sum(row.get('validation_code') not in (None,0) or row.get('info_code',0)!=0 for row in result['rows'])
@@ -202,4 +210,4 @@ class RingLicensePanel(SshFields,JobPanel):
 
     def clear_results(self):
         if self.running:return
-        super().clear_results();self.rows.clear();self.render();self.selection_changed()
+        super().clear_results();self.rows.clear();self.inventory_loaded=False;self.render();self.selection_changed()
