@@ -5,6 +5,7 @@ import ctypes
 from ctypes import wintypes
 import fnmatch
 import hashlib
+import ntpath
 import os
 from pathlib import Path, PureWindowsPath
 import posixpath
@@ -217,6 +218,7 @@ def scan(source, pattern, event, cancel):
 
 
 def transfer(source, target, options, event, cancel):
+    if 'paths' in options:return transfer_many(source,target,options,event,cancel)
     source, target = validate_pair(source, target)
     engine=options.get('engine','auto')
     if engine=='auto' and source['kind']!='linux' and target['kind']!='linux':
@@ -229,90 +231,188 @@ def transfer(source, target, options, event, cancel):
         src, dst = Files(source, stack), Files(target, stack)
         event(dict(kind='stage', text='Чтение списка файлов'))
         rows = manifest(src, source['path'], options.get('pattern') or '*', cancel)
-        keys = set()
-        if not dst.remote:
-            for row in rows:
-                key = row['relative'].casefold()
-                if key in keys:
-                    raise ValueError('Имена Linux совпадают без учёта регистра: ' + row['relative'])
-                keys.add(key)
-                for part in row['relative'].split('/'):
-                    if part and (re.search(r'[<>:"|?*\x00-\x1f]', part) or part.rstrip(' .') != part or
-                                 re.fullmatch(r'(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?', part)):
-                        raise ValueError('Имя несовместимо с Windows: ' + row['relative'])
-        total = sum(row['size'] for row in rows)
-        done = copied = skipped = 0
-        last = 0.
+        return copy_rows(src,dst,rows,target,options,event,cancel)
+
+
+def copy_rows(src,dst,rows,target,options,event,cancel):
+    keys = set()
+    if not dst.remote:
         for row in rows:
-            cancelled(cancel)
-            path = target['path']
+            key = row['relative'].casefold()
+            if key in keys:
+                raise ValueError('Имена Linux совпадают без учёта регистра: ' + row['relative'])
+            keys.add(key)
             for part in row['relative'].split('/'):
-                if part:
-                    path = dst.join(path, part)
-            if row['directory']:
-                dst.mkdirs(path)
-                continue
-            dst.mkdirs(posixpath.dirname(path) if dst.remote else str(Path(path).parent))
-            if dst.exists(path) and not options.get('overwrite'):
-                skipped += 1
-                done += row['size']
-                event(dict(kind='message', text='Пропущен существующий файл: ' + row['relative']))
-                continue
-            temporary = dst.join(posixpath.dirname(path) if dst.remote else str(Path(path).parent), '.ka-transfer-'+uuid4().hex+'.part')
-            event(dict(kind='stage', text='Передача: ' + row['relative']))
-            digest = hashlib.sha256()
-            written = 0
-            try:
-                with src.open(row['path'], 'rb') as reader, dst.open(temporary, 'xb' if not dst.remote else 'wx') as writer:
-                    if dst.remote:
-                        dst.sftp.chmod(temporary,0o600)
-                        writer.set_pipelined(True)
+                if part and (re.search(r'[<>:"|?*\x00-\x1f]', part) or part.rstrip(' .') != part or
+                             re.fullmatch(r'(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?', part)):
+                    raise ValueError('Имя несовместимо с Windows: ' + row['relative'])
+    total = sum(row['size'] for row in rows)
+    done = copied = skipped = 0
+    last = 0.
+    for row in rows:
+        cancelled(cancel)
+        path = target['path']
+        for part in row['relative'].split('/'):
+            if part:
+                path = dst.join(path, part)
+        if row['directory']:
+            dst.mkdirs(path)
+            continue
+        dst.mkdirs(posixpath.dirname(path) if dst.remote else str(Path(path).parent))
+        if dst.exists(path) and not options.get('overwrite'):
+            skipped += 1
+            done += row['size']
+            event(dict(kind='message', text='Пропущен существующий файл: ' + row['relative']))
+            continue
+        temporary = dst.join(posixpath.dirname(path) if dst.remote else str(Path(path).parent), '.ka-transfer-'+uuid4().hex+'.part')
+        event(dict(kind='stage', text='Передача: ' + row['relative']))
+        digest = hashlib.sha256()
+        written = 0
+        try:
+            with src.open(row['path'], 'rb') as reader, dst.open(temporary, 'xb' if not dst.remote else 'wx') as writer:
+                if dst.remote:
+                    dst.sftp.chmod(temporary,0o600)
+                    writer.set_pipelined(True)
+                while block := reader.read(CHUNK):
+                    cancelled(cancel)
+                    writer.write(block)
+                    digest.update(block)
+                    written += len(block)
+                    now = time.monotonic()
+                    if now-last > .25:
+                        event(dict(kind='progress', percent=min(99, (done+written)/max(1,total)*100), phase='Передача файлов'))
+                        last = now
+            current = src.info(row['path'])
+            if written != row['size'] or current.st_size != row['size'] or current.st_mtime != row['mtime']:
+                raise RuntimeError('Исходный файл изменился во время передачи: ' + row['relative'])
+            if dst.info(temporary).st_size != written:
+                raise RuntimeError('Размер принятого файла не совпадает')
+            if options.get('verify', True):
+                check = hashlib.sha256()
+                with dst.open(temporary, 'rb') as reader:
                     while block := reader.read(CHUNK):
                         cancelled(cancel)
-                        writer.write(block)
-                        digest.update(block)
-                        written += len(block)
-                        now = time.monotonic()
-                        if now-last > .25:
-                            event(dict(kind='progress', percent=min(99, (done+written)/max(1,total)*100), phase='Передача файлов'))
-                            last = now
-                current = src.info(row['path'])
-                if written != row['size'] or current.st_size != row['size'] or current.st_mtime != row['mtime']:
-                    raise RuntimeError('Исходный файл изменился во время передачи: ' + row['relative'])
-                if dst.info(temporary).st_size != written:
-                    raise RuntimeError('Размер принятого файла не совпадает')
-                if options.get('verify', True):
-                    check = hashlib.sha256()
-                    with dst.open(temporary, 'rb') as reader:
-                        while block := reader.read(CHUNK):
-                            cancelled(cancel)
-                            check.update(block)
-                    if check.digest() != digest.digest():
-                        raise RuntimeError('SHA-256 принятого файла не совпадает')
+                        check.update(block)
+                if check.digest() != digest.digest():
+                    raise RuntimeError('SHA-256 принятого файла не совпадает')
+            cancelled(cancel)
+            dst.replace(temporary, path, bool(options.get('overwrite')))
+            try:
+                if dst.remote:
+                    dst.sftp.utime(path, (row['mtime'], row['mtime']))
+                    if src.remote:dst.sftp.chmod(path,row['mode'])
+                else:os.utime(path, (row['mtime'], row['mtime']))
+            except OSError:
+                event(dict(kind='warning',text='Файл передан и проверен, но время изменения сохранить не удалось: '+row['relative']))
+            copied += 1
+            done += written
+            event(dict(kind='message', text='Передан: ' + row['relative']))
+        finally:
+            try:
+                if dst.exists(temporary):
+                    dst.remove(temporary)
+            except Exception:
+                # A disconnected SFTP channel must not hide the original failure.
+                event(dict(kind='warning',text='Не удалось убрать временный файл получателя: '+temporary))
+    event(dict(kind='progress', percent=100, phase='Передача файлов'))
+    return dict(copied=copied, skipped=skipped, bytes=done, engine='SFTP / SMB')
+
+
+def selection_paths(source,paths):
+    if not isinstance(paths,(list,tuple)) or not paths or len(paths)>10000:
+        raise ValueError('Добавьте от 1 до 10 000 файлов или папок в очередь')
+    result=[];seen=set()
+    for path in paths:
+        if not isinstance(path,str):raise ValueError('Некорректный путь в очереди передачи')
+        item=endpoint(dict(source,path=path));key=item['path'] if item['kind']=='linux' else item['path'].casefold()
+        if key not in seen:result.append(item);seen.add(key)
+    return result
+
+
+def transfer_many(source,target,options,event,cancel):
+    sources=selection_paths(source,options['paths']);target=endpoint(target)
+    for item in sources:validate_pair(item,target)
+    windows=sources[0]['kind']!='linux' and target['kind']!='linux'
+    engine=options.get('engine','auto')
+    native=engine=='robocopy' or (engine=='auto' and windows)
+    if engine not in ('auto','stream','robocopy'):raise ValueError('Неизвестный режим передачи')
+    if native and not windows:raise ValueError('Robocopy работает только между Windows-путями')
+    if options.get('preview') and not native:raise ValueError('Предпросмотр доступен только для Robocopy')
+    pattern=options.get('pattern') or '*'
+    if any(c in pattern for c in '/\\\r\n\x00'):raise ValueError('Укажите маску имени файла без пути')
+    with ExitStack() as stack:
+        src,dst=Files(sources[0],stack),Files(target,stack)
+        shares=set()
+        for item in sources:
+            if item['kind']=='windows':
+                share=PureWindowsPath(item['path']).anchor.casefold()
+                if share not in shares:stack.enter_context(smb(item));shares.add(share)
+        event(dict(kind='stage',text='Проверка очереди передачи'))
+        roots=[];folders=set();paths=posixpath if src.remote else ntpath
+        canonical=lambda value:value if src.remote else value.casefold()
+        for item in sources:
+            cancelled(cancel);info=src.info(item['path'])
+            if is_link(info):raise ValueError('Выбранный источник является ссылкой: '+item['path'])
+            directory=stat.S_ISDIR(info.st_mode)
+            if not directory and not stat.S_ISREG(info.st_mode):raise ValueError('Источник не является файлом или папкой: '+item['path'])
+            name=paths.basename(item['path'].rstrip('/\\'))
+            if not name or (not src.remote and not PureWindowsPath(item['path']).name):
+                raise ValueError('Для передачи корня диска используйте одиночный режим без очереди')
+            if any(c in name for c in '/\\') or name in ('.','..'):
+                raise ValueError('Недопустимое имя выбранного объекта: '+repr(name))
+            if not directory and not fnmatch.fnmatchcase(name if src.remote else name.casefold(),pattern if src.remote else pattern.casefold()):
+                event(dict(kind='warning',text='Выбранный файл не подходит под маску и пропущен: '+item['path']));continue
+            roots.append(dict(endpoint=item,directory=directory,name=name))
+            if directory:folders.add(canonical(item['path']))
+        filtered=[];names={}
+        for root in roots:
+            current=root['endpoint']['path'];parent=paths.dirname(current);covered=False
+            while parent and parent!=current:
+                if canonical(parent) in folders:covered=True;break
+                current,parent=parent,paths.dirname(parent)
+            if covered:continue
+            name=root['name'] if dst.remote else root['name'].casefold()
+            if name in names:raise ValueError('У выбранных объектов совпадает имя у получателя: '+root['name']+'. Передайте их раздельно или переименуйте.')
+            names[name]=root;filtered.append(root)
+        event(dict(kind='message',text='Объектов в очереди: '+str(len(filtered))+'. Повторные и вложенные выборы не дублируются.'))
+        if native:
+            jobs=[];groups={}
+            for root in filtered:
+                item=root['endpoint']
+                if root['directory']:
+                    jobs.append((item,dict(target,path=dst.join(target['path'],root['name'])),None))
+                else:
+                    parent=ntpath.dirname(item['path']).casefold()
+                    if parent not in groups:
+                        group=[];groups[parent]=group;jobs.append((item,target,group))
+                    group=groups[parent]
+                    candidate=group+[root['name']]
+                    if group and len(subprocess.list2cmdline(robocopy_args(item,target,options,files=candidate,check_length=False)).encode('utf-16-le'))//2>30000:
+                        group=[];groups[parent]=group;jobs.append((item,target,group))
+                    group.append(root['name'])
+            for item,destination,files in jobs:robocopy_args(item,destination,options,files=files)
+            code=0
+            for index,(item,destination,files) in enumerate(jobs):
                 cancelled(cancel)
-                dst.replace(temporary, path, bool(options.get('overwrite')))
-                try:
-                    if dst.remote:
-                        dst.sftp.utime(path, (row['mtime'], row['mtime']))
-                        if src.remote:dst.sftp.chmod(path,row['mode'])
-                    else:os.utime(path, (row['mtime'], row['mtime']))
-                except OSError:
-                    event(dict(kind='warning',text='Файл передан и проверен, но время изменения сохранить не удалось: '+row['relative']))
-                copied += 1
-                done += written
-                event(dict(kind='message', text='Передан: ' + row['relative']))
-            finally:
-                try:
-                    if dst.exists(temporary):
-                        dst.remove(temporary)
-                except Exception:
-                    # A disconnected SFTP channel must not hide the original failure.
-                    event(dict(kind='warning',text='Не удалось убрать временный файл получателя: '+temporary))
-        event(dict(kind='progress', percent=100, phase='Передача файлов'))
-        return dict(copied=copied, skipped=skipped, bytes=done, engine='SFTP / SMB')
+                event(dict(kind='stage',text=f'Передача группы {index+1}/{len(jobs)} · '+item['path']))
+                def progress(value,index=index):
+                    if value.get('kind')=='progress':value=dict(value,percent=(index+float(value.get('percent',0))/100)*100/max(1,len(jobs)),phase='Передача очереди')
+                    event(value)
+                result=robocopy(item,destination,options,progress,cancel,files=files);code|=result['code']
+            event(dict(kind='progress',percent=100,phase='Передача очереди'))
+            return dict(engine='Robocopy',code=code,items=len(filtered),groups=len(jobs),preview=bool(options.get('preview')))
+        rows=[]
+        for root in filtered:
+            part=manifest(src,root['endpoint']['path'],pattern,cancel)
+            for row in part:
+                relative=(root['name']+'/'+row['relative'] if row['relative'] else root['name']) if root['directory'] else root['name']
+                rows.append(dict(row,relative=relative))
+                if len(rows)>200000:raise ValueError('Слишком много записей для одного задания: более 200 000')
+        result=copy_rows(src,dst,rows,target,options,event,cancel);result['items']=len(filtered)
+        return result
 
 
-def robocopy_args(source, target, options):
+def robocopy_args(source, target, options,files=None,check_length=True):
     source, target = validate_pair(source, target)
     if source['kind'] == 'linux' or target['kind'] == 'linux':
         raise ValueError('Robocopy работает только между Windows-путями. Для Linux выберите автоматический режим.')
@@ -322,22 +422,28 @@ def robocopy_args(source, target, options):
     pattern = options.get('pattern') or '*'
     if any(c in pattern for c in '/\\\r\n\x00') or pattern.startswith('/'):
         raise ValueError('Укажите маску имени файла, например *.bak')
-    args = ['robocopy.exe', source['path'], target['path'], pattern, '/E', '/XJ', '/R:2', '/W:2',
+    if files is not None:
+        if not files or any(not isinstance(name,str) or name in ('.','..') or any(c in name for c in '/\\\r\n\x00*?') for name in files):
+            raise ValueError('Некорректный список имён файлов Robocopy')
+        source_path=ntpath.dirname(source['path']);selection=list(files)+['/LEV:1']
+    else:source_path=source['path'];selection=[pattern,'/E']
+    args = ['robocopy.exe', source_path, target['path'], *selection, '/XJ', '/R:2', '/W:2',
             '/COPY:DAT', '/DCOPY:T', '/Z', '/NP', '/FP', '/BYTES', '/UNICODE', '/MT:'+str(threads)]
     if not options.get('overwrite'):
         args.extend(['/XC', '/XN', '/XO'])
     if options.get('preview'):
         args.append('/L')
+    if check_length and len(subprocess.list2cmdline(args).encode('utf-16-le'))//2>32760:raise ValueError('Слишком длинная команда Robocopy. Сократите пути или список выбранных файлов.')
     return args
 
 
-def robocopy(source, target, options, event, cancel):
-    args = robocopy_args(source, target, options)
+def robocopy(source, target, options, event, cancel,files=None):
+    args = robocopy_args(source, target, options,files=files)
     if os.name != 'nt':
         raise RuntimeError('Robocopy выполняется на Windows-компьютере консоли')
     with ExitStack() as stack:
         stack.enter_context(smb(source)); stack.enter_context(smb(target))
-        if not os.path.isdir(source['path']):
+        if not os.path.isdir(ntpath.dirname(source['path']) if files is not None else source['path']):
             raise ValueError('Для Robocopy источник должен быть папкой. Для одного файла используйте маску или потоковую передачу.')
         event(dict(kind='stage', text='Robocopy · предварительный просмотр' if options.get('preview') else 'Robocopy'))
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

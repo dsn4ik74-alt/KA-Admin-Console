@@ -53,7 +53,7 @@ from cluster_registry_ui import show_base_properties
 from postgres_runner import OperationCancelled
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.34"
+APP_VERSION = "20.33.35"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
