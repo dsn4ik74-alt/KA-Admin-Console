@@ -11,6 +11,7 @@ from postgres_jobs import run_job, read_only_job
 from sql_server import format_size
 from table_sorting import TableSorter
 from ui_geometry import delayed_wrap
+from ui_controls import field_parent
 
 
 def database_columns(panel, container, source_filter, target_filter, columns, numeric=()):
@@ -22,6 +23,7 @@ def database_columns(panel, container, source_filter, target_filter, columns, nu
     split = tk.PanedWindow(container, orient=tk.HORIZONTAL, bg=panel.c['border'],
                            bd=0, sashwidth=9, sashpad=2, showhandle=True,
                            handlesize=12, sashcursor='sb_h_double_arrow', opaqueresize=False)
+    split.configure(bg=panel.c['panel'],showhandle=False,sashwidth=6,sashpad=3)
     split.grid(row=0, column=0, sticky='nsew')
     tables, sorters, areas, counts = [], [], [], []
     for index, (title, variable) in enumerate((('Источник', source_filter), ('Получатель', target_filter))):
@@ -35,6 +37,7 @@ def database_columns(panel, container, source_filter, target_filter, columns, nu
         count = panel.app._label(header, '0 баз', 9, 'muted')
         count.pack(side=tk.RIGHT)
         search = panel.app._entry(area, variable, width=1)
+        if hasattr(search,'set_hint'):search.set_hint('Найти базу…')
         search.configure(bd=4, font=('Segoe UI', 10))
         search.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0, 6))
         tree = ttk.Treeview(area, columns=tuple(key for key, title, width in columns), show='headings',
@@ -69,7 +72,7 @@ def compact_copy_title(panel, compact):
     if compact:
         panel.title.pack_forget()
     else:
-        panel.title.pack(**panel._copy_title_pack, before=panel.right.master)
+        panel.title.pack(**panel._copy_title_pack, before=getattr(panel,'parameters_toolbar',panel.right.master))
 
 
 def install_new_copy_tab(panel):
@@ -98,7 +101,7 @@ class SqlCopyPanel(SqlPanel):
         self.delete_target_button.pack(fill=tk.X, after=self.delete_db_button, pady=(4, 4))
         self.inputs.append(self.delete_target_button)
         self.target_filter = tk.StringVar()
-        self.filter_entry.master.grid_remove()
+        field_parent(self.filter_entry).grid_remove()
         container = self.tree.master
         self.tree, self.target_tree, self.sorter, self.target_sorter = database_columns(
             self, container, self.filter_var, self.target_filter,
@@ -326,7 +329,7 @@ class PostgresCopyPanel(PostgresPanel):
         self.pg_label.configure(text='Сервер PostgreSQL · источник')
         # Rebuild in the actual pane parents: geometry reparenting alone leaves
         # the old source widget behind the new opaque PanedWindow on Windows.
-        self.filter_entry.master.grid_remove()
+        field_parent(self.filter_entry).grid_remove()
         self.selection_note.grid_remove()
         source_table = self.tree.master
         self.tree, self.target_tree, self.sorter, self.target_sorter = database_columns(

@@ -651,12 +651,16 @@ def install_schedule_button(panel, scheduler):
     if getattr(panel,'_scheduler_button',None) is not None:return
     mode=getattr(panel,'_page_kind',getattr(panel,'mode',''))
     if mode not in LABELS:return
-    parent=getattr(panel,'form',None)
+    toolbar=getattr(panel,'parameters_toolbar',None)
+    parent=toolbar if toolbar is not None else getattr(panel,'form',None)
     if parent is None:parent=getattr(panel,'actions',None)
     if parent is None:parent=getattr(panel,'action_bar',None)
     if parent is None:return
     button=panel.app._button(parent,'В планировщик ▾',lambda:menu())
-    if hasattr(panel,'form'):
+    if toolbar is not None:
+        button.configure(text='В план ▾',font=('Segoe UI',9),padx=8,pady=4)
+        button.pack(side=tk.RIGHT,padx=(6,0))
+    elif hasattr(panel,'form'):
         children=parent.pack_slaves()
         button.pack(fill=tk.X,pady=(0,6),**({'before':children[0]} if children else {}))
     else:button.pack(side=tk.RIGHT,padx=6)

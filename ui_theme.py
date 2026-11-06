@@ -1,15 +1,15 @@
-"""Shared desktop palette and a lightweight, responsive workspace rail."""
+"""Shared desktop palette, cards and workspace navigation."""
 import tkinter as tk
 from tkinter import ttk
 
 
 COLORS = {
-    'bg': '#f3f3fa', 'panel': '#ffffff', 'row': '#f8f8fd', 'border': '#e6e7f2',
-    'fg': '#20223d', 'muted': '#747990', 'accent': '#5749e9', 'hover': '#4436d0',
-    'accent_fg': '#ffffff', 'button': '#f0f0fa', 'button_hover': '#e7e5fc',
-    'selected': '#e9e6ff', 'text_selected': '#b9acf0', 'danger': '#ce465f', 'danger_hover': '#b43750',
-    'success': '#149b79', 'success_bg': '#e5f6ef', 'warning': '#b37a1c',
-    'warning_bg': '#fff5df', 'rail': '#ffffff',
+    'bg': '#f1f2f2', 'panel': '#ffffff', 'row': '#fafbfb', 'border': '#d8dee0',
+    'fg': '#30383c', 'muted': '#7c878c', 'accent': '#4c8198', 'hover': '#376c82',
+    'accent_fg': '#ffffff', 'button': '#edf0f2', 'button_hover': '#e0e6ea',
+    'selected': '#eef3f5', 'text_selected': '#b5cee7', 'danger': '#be3e43', 'danger_hover': '#a33035',
+    'success': '#238760', 'success_bg': '#e8f5ee', 'warning': '#956500',
+    'warning_bg': '#fff5d8', 'rail': '#f7f8f9',
 }
 
 
@@ -51,21 +51,81 @@ class RoundedSurface(tk.Canvas):
             self._pending = None
 
 
+class ParameterSheet(RoundedSurface):
+    """A modeless parameter card inside one workspace, never a global grab."""
+    def __init__(self,parent,app,colors):
+        self.shadow=tk.Frame(parent,bg='#dfe3e4')
+        super().__init__(parent,colors,padding=19)
+        self.parent_area=parent
+        self.visible=False
+        self._sheet_job=None
+        self._key_tag='ka-sheet-'+str(id(self))
+        self.bind_class(self._key_tag,'<Escape>',lambda event:(self.hide(),'break')[1])
+        self.body._open_for_field=self.show
+        header=tk.Frame(self.body,bg=colors['panel']);header.pack(fill=tk.X,pady=(0,14))
+        self.caption=app._label(header,'Параметры задачи',14,anchor='w')
+        self.caption.pack(side=tk.LEFT)
+        close=app._button(header,'×',self.hide);close.configure(padx=3,pady=2)
+        close._base_bg='#fee8e8';close._hover_bg='#f9d4d6'
+        close.configure(bg=close._base_bg,fg='#bb666a')
+        close.pack(side=tk.RIGHT)
+        footer=tk.Frame(self.body,bg=colors['panel']);footer.pack(side=tk.BOTTOM,fill=tk.X,pady=(12,0))
+        app._button(footer,'Готово',self.hide,primary=True).pack(side=tk.RIGHT)
+        app._label(footer,'Параметры сохраняются в этой вкладке',8,'muted',anchor='w').pack(side=tk.LEFT)
+        self.content=tk.Frame(self.body,bg=colors['panel'])
+        self.content.pack(fill=tk.BOTH,expand=True)
+        parent.bind('<Configure>',self._sheet_resize,add='+')
+        self.bind('<Escape>',lambda event:self.hide(),add='+')
+        self.bind('<Destroy>',self._sheet_closed,add='+')
+
+    def show(self):
+        pending=[self.body]
+        while pending:
+            child=pending.pop();pending.extend(child.winfo_children())
+            tags=child.bindtags()
+            if self._key_tag not in tags:child.bindtags((*tags[:2],self._key_tag,*tags[2:]))
+        self.visible=True;self._sheet_geometry();self.lift()
+
+    def lift(self,aboveThis=None):
+        return tk.Misc.lift(self,aboveThis)
+
+    def hide(self):
+        self.visible=False;self.place_forget();self.shadow.place_forget()
+
+    def _sheet_resize(self,event=None):
+        if self.visible and self._sheet_job is None:self._sheet_job=self.after_idle(self._sheet_geometry)
+
+    def _sheet_geometry(self):
+        self._sheet_job=None
+        if not self.visible:return
+        width,height=self.parent_area.winfo_width(),self.parent_area.winfo_height()
+        w,h=max(260,min(520,width-28)),max(110,min(680,height-16))
+        x,y=max(0,(width-w)//2),max(0,(height-h)//2)
+        self.shadow.place(x=x+4,y=y+5,width=w,height=h)
+        self.shadow.lift()
+        self.place(x=x,y=y,width=w,height=h);self.lift()
+
+    def _sheet_closed(self,event):
+        if event.widget is self:
+            if self._sheet_job:self.after_cancel(self._sheet_job);self._sheet_job=None
+            self.unbind_class(self._key_tag,'<Escape>')
+
+
 def apply_styles(root, colors):
     style = ttk.Style(root)
     style.theme_use('clam')
-    row = max(30, round(26 * float(root.tk.call('tk', 'scaling')) / 1.33))
+    row = max(34, round(29 * float(root.tk.call('tk', 'scaling')) / 1.33))
     style.configure('Treeview', font=('Segoe UI', 10), rowheight=row,
                     background=colors['panel'], foreground=colors['fg'],
                     fieldbackground=colors['panel'], borderwidth=0,
                     bordercolor=colors['panel'], lightcolor=colors['panel'], darkcolor=colors['panel'])
-    style.configure('Treeview.Heading', font=('Segoe UI', 9, 'bold'),
-                    background=colors['row'], foreground=colors['muted'],
-                    borderwidth=0, relief='flat', padding=(10, 9))
+    style.configure('Treeview.Heading', font=('Segoe UI', 9),
+                    background=colors['panel'], foreground=colors['fg'],
+                    borderwidth=0, relief='flat', padding=(12, 10))
     style.configure('Copy.Treeview', font=('Segoe UI', 10), rowheight=row)
-    style.configure('Copy.Treeview.Heading', font=('Segoe UI', 9, 'bold'), padding=(7, 8))
-    style.map('Treeview', background=[('selected', colors['accent'])],
-              foreground=[('selected', colors['accent_fg'])])
+    style.configure('Copy.Treeview.Heading', background=colors['panel'], foreground=colors['fg'],
+                    font=('Segoe UI', 9), padding=(10, 9))
+    style.map('Treeview', background=[('selected', '#e7eff2')], foreground=[('selected', colors['fg'])])
     style.map('Treeview.Heading', background=[('active', colors['button'])],
               foreground=[('active', colors['accent'])])
     for orientation in ('Vertical', 'Horizontal'):
@@ -86,25 +146,27 @@ def apply_styles(root, colors):
               bordercolor=[('focus', colors['accent'])])
     style.configure('TNotebook', background=colors['panel'], borderwidth=0,
                     tabmargins=(0, 0, 0, 8))
-    style.configure('TNotebook.Tab', font=('Segoe UI', 10), padding=(13, 8),
+    style.configure('TNotebook.Tab', font=('Segoe UI', 10), padding=(14, 7),
                     background=colors['panel'], foreground=colors['muted'], borderwidth=0)
-    style.map('TNotebook.Tab', background=[('selected', colors['selected']), ('active', colors['button'])],
-              foreground=[('selected', colors['accent']), ('active', colors['fg'])])
+    style.map('TNotebook.Tab', background=[('selected', '#eaf1f4'), ('active', colors['button'])],
+              foreground=[('selected', colors['fg']), ('active', colors['fg'])])
     root.option_add('*TCombobox*Listbox.background', colors['panel'])
     root.option_add('*TCombobox*Listbox.foreground', colors['fg'])
     root.option_add('*TCombobox*Listbox.selectBackground', colors['selected'])
     root.option_add('*TCombobox*Listbox.selectForeground', colors['fg'])
+    from ui_controls import install_native_controls
+    install_native_controls(root, colors)
 
 
 class WorkspaceSidebar(tk.Frame):
-    """A compact host for the user's actual bookmark folders and tabs."""
+    """Compact navigation for the application's fixed sections."""
     def __init__(self, parent, app, colors, version):
         super().__init__(parent, bg=colors['rail'], width=176)
         self.app, self.c, self.compact = app, colors, None
         self.version_text = 'КА · ' + version
         self.pack_propagate(False)
-        self.brand = tk.Label(self, text='КА', bg=colors['accent'], fg='#ffffff',
-                              font=('Segoe UI', 14, 'bold'), padx=8, pady=4, cursor='hand2')
+        self.brand = tk.Label(self, text='КА  /  Администрирование', bg=colors['rail'], fg=colors['fg'],
+                              font=('Segoe UI', 9, 'bold'), padx=0, pady=6, cursor='hand2')
         self.brand.pack(anchor='w', padx=12, pady=(12, 10))
         self.brand.bind('<Button-1>', lambda event: app._switch_mode('home'))
         self.home = app._button(self, '⌂  Главная', lambda: app._switch_mode('home'))
@@ -117,13 +179,16 @@ class WorkspaceSidebar(tk.Frame):
         self.version.pack(side=tk.BOTTOM, fill=tk.X, padx=12, pady=10)
         self.folder_host = tk.Frame(self, bg=colors['rail'])
         self.folder_host.pack(fill=tk.BOTH, expand=True, padx=7, pady=(0, 5))
+        tk.Label(self, text='Раздел → действие → вкладка', bg=colors['rail'], fg=colors['muted'],
+                 font=('Segoe UI', 8), anchor='w').pack(side=tk.BOTTOM, fill=tk.X, padx=12, pady=4)
         self.set_compact(False)
 
     def set_compact(self, compact):
         if compact == self.compact:
             return
         self.compact = compact
-        self.configure(width=152 if compact else 176)
+        self.configure(width=164 if compact else 188)
+        self.brand.configure(text='КА / Администр.' if compact else 'КА  /  Администрирование')
 
     def set_active(self, mode):
         self.home._base_bg = self.c['selected'] if mode == 'home' else self.c['button']

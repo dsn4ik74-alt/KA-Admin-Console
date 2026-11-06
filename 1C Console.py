@@ -44,16 +44,17 @@ from database_sizes import DatabaseSizes
 from scheduler_ui import SchedulerPanel, install_schedule_button
 from infobase_launcher import prepare_client, start_client, choose_open_mode
 from infobase_address import infobase_address
-from ui_theme import COLORS, WorkspaceSidebar, apply_styles
+from ui_theme import COLORS, WorkspaceSidebar, apply_styles, ParameterSheet, RoundedSurface
 from web_publication_ui import WebPublicationPanel
 from ring_license_ui import RingLicensePanel
 from file_transfer_ui import FileTransferPanel
 from workspace_tabs import WorkspaceTabStrip, split_legacy_tabs, page_title
 from cluster_registry_ui import show_base_properties
 from postgres_runner import OperationCancelled
+from ui_controls import LandscapeButton, LandscapeEntry, reveal_field, install_action_flow, decorate_search_fields
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.35"
+APP_VERSION = "20.33.38"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -149,6 +150,8 @@ def ensure_administrator():
 
 class App:
     def __init__(self):
+        self._settings = load_settings()
+        self._settings.pop('appearance_profile', None)
         self.root = tk.Tk()
         self.root.report_callback_exception = self._report_callback_exception
         install_edit_shortcuts(self.root)
@@ -161,7 +164,7 @@ class App:
         self.root.iconphoto(True, self._app_icon)
         self.root.option_add('*Text.selectForeground', C['fg'])
         self.root.option_add('*Entry.selectForeground', C['fg'])
-        self._settings = load_settings()
+        apply_styles(self.root, C)
         self._lst_path = self._settings.get("lst_path", "")
         self.all_items, self._all_bases, self._visible_items = [], [], []
         self.rac_map, self._backups = {}, {}
@@ -242,25 +245,10 @@ class App:
                         bg=parent.cget("bg"), fg=C[color], **kwargs)
 
     def _button(self, parent, text, command, primary=False):
-        bg, hover = (C["accent"], C["hover"]) if primary else (C["button"], C["button_hover"])
-        button = tk.Button(parent, text=text, command=command, font=("Segoe UI", 10, "bold" if primary else "normal"),
-                           bg=bg, fg=C["accent_fg"] if primary else C["fg"], activebackground=hover,
-                           activeforeground=C["accent_fg"] if primary else C["fg"],
-                           disabledforeground='#d5dffa' if primary else C["muted"],
-                           relief="flat", bd=0, cursor="hand2", padx=12, pady=7,
-                           highlightthickness=1, highlightbackground=bg, highlightcolor=C['accent'])
-        button._base_bg = bg
-        button._hover_bg = hover
-        button.bind("<Enter>", lambda event: button.configure(bg=button._hover_bg) if button.cget("state") != "disabled" else None)
-        button.bind("<Leave>", lambda event: button.configure(bg=button._base_bg))
-        return button
+        return LandscapeButton(parent, text, command, C, primary)
 
     def _entry(self, parent, variable, width=None, show=None):
-        widget = tk.Entry(parent, textvariable=variable, width=width, show=show, font=("Segoe UI", 10),
-                        bg=C["panel"], fg=C["fg"], insertbackground=C["accent"], selectbackground=C["text_selected"],
-                        selectforeground=C['fg'], disabledbackground=C['button'], disabledforeground=C['muted'],
-                        relief="flat", bd=5, highlightthickness=1,
-                        highlightbackground=C["border"], highlightcolor=C["accent"])
+        widget = LandscapeEntry(parent, variable, C, width, show)
         bind_entry_shortcuts(widget)
         return widget
 
@@ -270,33 +258,43 @@ class App:
         # Pack the footer first: Tk reserves it before shrinking the content.
         footer = tk.Frame(self.root, bg=C["panel"], padx=20, pady=10)
         footer.pack(fill=tk.X, side=tk.BOTTOM)
-        source = tk.Frame(self.root, bg=C["panel"], padx=16, pady=12)
-        source.pack(fill=tk.X, padx=22, pady=(0, 12))
+        self.inventory_sheet=ParameterSheet(self.root,self,C)
+        self.inventory_sheet.caption.configure(text='Подключение к кластеру')
+        self._inventory_anchor=tk.Frame(self.root,height=0,bg=C['bg'])
+        self._inventory_anchor.pack(fill=tk.X)
+        inventory_parent=self.inventory_sheet.content
+        source = tk.Frame(inventory_parent, bg=C["panel"], padx=0, pady=12)
+        source.pack(fill=tk.X, padx=0, pady=(0, 12))
         self._label(source, "ИСТОЧНИК", 9, "accent", True).pack(side=tk.LEFT, padx=(0, 16))
         self.lst_lbl = self._label(source, "Поиск локальных списков…", 10, "muted", anchor=tk.W)
         self.lst_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
         delayed_wrap(self.lst_lbl, minimum=200, inset=8)
 
         navigation = tk.Frame(self.root, bg=C["bg"])
-        navigation.pack(fill=tk.X, padx=18, pady=(14, 10), before=source)
+        navigation.pack(fill=tk.X, padx=18, pady=(14, 10), before=getattr(self,'_inventory_anchor',source))
         self.home_badge = self.sidebar.brand
         self.home_button = self.sidebar.home
         self.btn_pick = self._button(source, 'Выбрать файл', self._pick_lst)
         self.btn_pick.pack(side=tk.RIGHT, padx=(8, 0))
         self.btn_local = self._button(source, 'Локальные списки', self._discover)
         self.btn_local.pack(side=tk.RIGHT)
+        caption=source.pack_slaves()[0];caption.pack_forget();caption.pack(anchor='w')
+        self.lst_lbl.pack_forget();self.lst_lbl.pack(fill=tk.X,pady=(5,10))
         self.history_button = self._button(navigation, 'История', lambda: self.hub.dialog('history'))
         self.history_button.pack(side=tk.RIGHT)
         self.favorites_button = self._button(navigation, '☆ Избранное', lambda: self.hub.dialog('favorites'))
         self.favorites_button.pack(side=tk.RIGHT, padx=6)
         self.btn_update = self._button(navigation, "Обновить", self._on_update_clicked, primary=True)
         self.btn_update.pack(side=tk.RIGHT)
+        self.inventory_parameters_button=self._button(navigation,'Подключение 1С',self.inventory_sheet.show)
         saved_navigation,legacy_tabs=split_legacy_tabs(self._settings.get('navigation_layout'))
+        if saved_navigation and 'navigation_layout_before_fixed_sections' not in self._settings:
+            self._settings['navigation_layout_before_fixed_sections']=saved_navigation
         if legacy_tabs and 'navigation_layout_before_workspace_tabs' not in self._settings:
             self._settings['navigation_layout_before_workspace_tabs']=self._settings.get('navigation_layout')
-        self.bookmarks = BookmarkBar(self.sidebar.folder_host, C, saved_navigation,
-                                     self._open_workspace, self._save_navigation, vertical=True)
-        self.bookmarks.activate_tab = self._open_workspace
+        self.bookmarks = BookmarkBar(self.sidebar.folder_host, C, None,
+                                     self._navigate_workspace, self._save_navigation, vertical=True, editable=False)
+        self.bookmarks.activate_tab = self._navigate_workspace
         self.bookmarks.can_close_tab = self._can_close_tab
         self.bookmarks.open_workspace = self._pick_workspace
         self.bookmarks.close_workspace = self._close_workspace
@@ -306,30 +304,30 @@ class App:
         self.workspace_tabs=WorkspaceTabStrip(self.root,C,saved_workspaces,self._activate_workspace,
             self._close_workspace,self._pick_workspace,self._save_workspaces)
         self._settings['workspace_tabs']=self.workspace_tabs.model.snapshot()
-        self.workspace_tabs.pack(fill=tk.X,padx=22,pady=(0,8),before=source)
+        self.workspace_tabs.pack(fill=tk.X,padx=22,pady=(0,8),before=getattr(self,'_inventory_anchor',source))
         self._table_views={}
         self.running_tasks = RunningTasks(navigation, C, self._switch_mode)
         self._settings["navigation_layout"] = self.bookmarks.layout.snapshot()
         self.bookmarks.pack(fill=tk.BOTH, expand=True)
         self._navigation_hint = self._label(self.root, self.bookmarks.breadcrumb(self.mode),
                                             9, "muted", anchor=tk.W)
-        self._navigation_hint.pack(fill=tk.X, padx=22, pady=(0, 6), before=source)
+        self._navigation_hint.pack(fill=tk.X, padx=22, pady=(0, 6), before=getattr(self,'_inventory_anchor',source))
         self._navigation_hint_pack = self._navigation_hint.pack_info()
 
-        auth = tk.Frame(self.root, bg=C["panel"], padx=16, pady=12)
-        auth.pack(fill=tk.X, padx=22, pady=(0, 12))
+        auth = tk.Frame(inventory_parent, bg=C["panel"], padx=0, pady=12)
+        auth.pack(fill=tk.X, padx=0, pady=(0, 12))
         user, password = load_cache()
         self.user_var = tk.StringVar(value=user)
         self.pwd_var = tk.StringVar(value=password)
-        self._label(auth, "Доступ к кластеру", 10, bold=True).pack(side=tk.LEFT, padx=(0, 24))
-        self._label(auth, "Логин", 10, "muted").pack(side=tk.LEFT, padx=(0, 8))
-        self._entry(auth, self.user_var, width=18).pack(side=tk.LEFT, padx=(0, 18))
-        self._label(auth, "Пароль", 10, "muted").pack(side=tk.LEFT, padx=(0, 8))
-        self._entry(auth, self.pwd_var, width=18, show="•").pack(side=tk.LEFT)
-        self._label(auth, "Без администратора — оставьте поля пустыми", 9, "muted").pack(side=tk.RIGHT)
+        self._label(auth,'Доступ к кластеру',12).pack(anchor='w',pady=(0,12))
+        self._label(auth,'Логин администратора',9,'muted').pack(anchor='w',pady=(0,5))
+        self._entry(auth,self.user_var).pack(fill=tk.X,pady=(0,12))
+        self._label(auth,'Пароль',9,'muted').pack(anchor='w',pady=(0,5))
+        self._entry(auth,self.pwd_var,show='•').pack(fill=tk.X)
+        self._label(auth,'Если администратора нет, оставьте поля пустыми.',9,'muted').pack(anchor='w',pady=(8,0))
 
-        ras_options = tk.Frame(self.root, bg=C["bg"])
-        ras_options.pack(fill=tk.X, padx=22, pady=(0, 12))
+        ras_options = tk.Frame(inventory_parent, bg=C['panel'])
+        ras_options.pack(fill=tk.X, padx=0, pady=(0, 12))
         self.local_ras_var = tk.BooleanVar(value=self._settings.get("local_ras", True))
         self.local_ras_check = tk.Checkbutton(
             ras_options, text="Запускать временный RAS на этом компьютере для операций с кластером",
@@ -338,12 +336,13 @@ class App:
             activeforeground=C["accent"], bd=0, highlightthickness=0,
         )
         self.local_ras_check.pack(side=tk.LEFT)
+        self.local_ras_check.configure(bg=C['panel'],wraplength=420,justify=tk.LEFT)
 
         search = tk.Frame(self.root, bg=C["bg"])
         search.pack(fill=tk.X, padx=22, pady=(0, 12))
-        self._label(search, "Фильтр", 10, "muted").pack(side=tk.LEFT, padx=(0, 12))
         self.search_var = tk.StringVar()
         self.search_entry = self._entry(search, self.search_var)
+        if hasattr(self.search_entry,'set_hint'):self.search_entry.set_hint('Имя, адрес сервера или база…')
         self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.search_entry.bind("<Return>", lambda event: self._do_rac_search() if self.mode == "bases" else self._render())
         self.search_entry.bind("<Escape>", lambda event: self.search_var.set(""))
@@ -352,7 +351,8 @@ class App:
 
         table_header = tk.Frame(self.root, bg=C["bg"])
         table_header.pack(fill=tk.X, padx=22, pady=(0, 10))
-        self.lbl_count = self._label(table_header, "", 11, bold=True)
+        table_header.pack_configure(before=search)
+        self.lbl_count = self._label(table_header, "", 18, bold=False)
         self.lbl_count.pack(side=tk.LEFT)
         self.choose_base_button = self._button(table_header, 'Выбрать', self._choose_base)
         self.all_bases_button = self._button(table_header, 'Все', self._show_all_bases)
@@ -361,8 +361,9 @@ class App:
         self.cancel_open_button.configure(fg=C['danger'])
         self._table_hint = self._label(table_header, "Двойной щелчок — открыть MMC    ·    Ctrl+C — копировать", 9, "muted")
         self._table_hint.pack(side=tk.RIGHT)
-        table = tk.Frame(self.root, bg=C["border"], padx=1, pady=1)
-        table.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
+        table_container=RoundedSurface(self.root,C,padding=14)
+        table_container.pack(fill=tk.BOTH,expand=True,padx=22,pady=(0,12))
+        table=table_container.body
         table.rowconfigure(0, weight=1)
         table.columnconfigure(0, weight=1)
         self.tree = ttk.Treeview(table, columns=COLUMNS, show="headings", selectmode="extended")
@@ -394,7 +395,7 @@ class App:
         self._navigation = navigation
         self._footer = footer
         self._server_layout = [(widget, widget.pack_info()) for widget in
-                               (auth, ras_options, search, table_header, table)]
+                               ((auth, ras_options, table_header, search, table_container))]
         self.accounts = AccountsPanel(self.root, self, C)
         self.services = ServicesPanel(self.root, self, C)
         self.sql = SqlPanel(self.root, self, C)
@@ -430,6 +431,7 @@ class App:
         for panel in set(self._pages.values()):
             self.saved_servers.install(panel)
             install_schedule_button(panel, self.scheduler)
+            install_action_flow(panel);decorate_search_fields(panel)
         self.scheduler.start_monitor()
 
     def _apply_theme(self):
@@ -450,7 +452,7 @@ class App:
         if panel is None:
             self._notice, self._notice_mode = (title, text), self.mode
             self._status(text)
-            self.form_notice.show(title, text, self._source_panel)
+            self.form_notice.show(title, text, getattr(self,'_inventory_anchor',self._source_panel))
             if widget is not None:
                 FormNotice.reveal(widget)
             return
@@ -459,6 +461,8 @@ class App:
         if hasattr(panel, 'state_label'):
             panel.state_label.configure(text=title, fg=C['danger'])
         if self._panel_visible(panel):
+            if widget is not None:
+                reveal_field(widget)
             self.form_notice.show(title, text, panel)
             if widget is not None:
                 FormNotice.reveal(widget)
@@ -565,6 +569,27 @@ class App:
         self._switch_mode(mode,key)
         return key
 
+    def _workspace_running(self,key):
+        panel=self._pages.get(key)
+        return bool(key in self.workspace_tabs.running or panel is not None and (
+            panel.running or getattr(panel,'_saving',False) or getattr(panel,'configuring_background',False)))
+
+    def _navigate_workspace(self,mode,source_id=None,title=None):
+        """Ordinary navigation reuses an idle form, including its draft and log."""
+        if mode=='home':self._switch_mode('home');return 'home'
+        candidates=[row for row in self.workspace_tabs.model.entries
+                    if row['mode']==mode and not self._workspace_running(row['key'])]
+        row=next((row for row in candidates if row['key']==self._active_tab_key),None)
+        if row is None:
+            recent=getattr(self,'_workspace_recent',{}).get(mode)
+            row=next((row for row in candidates if row['key']==recent),None)
+        row=row or (candidates[-1] if candidates else None)
+        if row is not None:
+            if row['key']!=self._active_tab_key:self._activate_workspace(row['key'])
+            else:self.workspace_tabs.reveal(row['key'])
+            return row['key']
+        return self._open_workspace(mode,source_id,title)
+
     def _activate_workspace(self,key):
         if key=='home':self._switch_mode('home');return
         row=self.workspace_tabs.model.find(key)
@@ -630,8 +655,10 @@ class App:
         self._pages[key] = panel
         self.saved_servers.install(panel)
         install_schedule_button(panel, self.scheduler)
+        install_action_flow(panel);decorate_search_fields(panel)
         if self._compact_mode is not None:
             panel.set_compact(self._compact_mode)
+            if hasattr(panel,'adapt_workspace'):panel.adapt_workspace(self._compact_mode)
         return panel
 
     def _operation_running(self):
@@ -688,10 +715,11 @@ class App:
         self._compact_mode = compact
         for panel in set(self._pages.values()):
             panel.set_compact(compact)
+            if hasattr(panel,'adapt_workspace'):panel.adapt_workspace(compact)
         if compact:
             self._navigation_hint.pack_forget()
         else:
-            content = self._source_panel if self.mode in TABLES else self._current_panel()
+            content = getattr(self,'_inventory_anchor',self._source_panel) if self.mode in TABLES else self._current_panel()
             self._navigation_hint.pack(**self._navigation_hint_pack, before=content)
 
     def _save_ras_mode(self):
@@ -1076,6 +1104,10 @@ class App:
             self.empty_lbl.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
         self._update_open_actions()
     def _switch_mode(self, mode, tab_id=None):
+        if hasattr(self,'inventory_sheet'):
+            self.inventory_sheet.hide()
+            self.inventory_parameters_button.pack_forget()
+            if mode in TABLES:self.inventory_parameters_button.pack(side=tk.LEFT)
         key = tab_id or mode
         self._remember_table_view()
         if mode!='home' and self.workspace_tabs.model.find(key) is None:
@@ -1124,6 +1156,9 @@ class App:
         if mode in TABLES:
             self._active_panel = None
         self._active_tab_key = key
+        if mode!='home':
+            if not hasattr(self,'_workspace_recent'):self._workspace_recent={}
+            self._workspace_recent[mode]=key
         self.mode, self._sort_col, self._sort_reverse = mode, None, False
         self.home_button.configure(bg=C['selected'] if mode == 'home' else C['button'])
         self._navigation_hint.configure(text='Главная' if mode == 'home' else self._workspace_breadcrumb(key))
@@ -1161,8 +1196,10 @@ class App:
             self.accounts.names.focus_set()
         panel = self._current_panel()
         if panel is None and getattr(self, '_notice_mode', None) == mode and getattr(self, '_notice', None):
-            self.form_notice.show(*self._notice, before=self._source_panel)
+            self.form_notice.show(*self._notice, before=getattr(self,'_inventory_anchor',self._source_panel))
         if panel is not None:
+            if hasattr(panel, 'workspace_activated'):
+                panel.workspace_activated()
             if getattr(panel, '_notice', None):
                 self.form_notice.show(*panel._notice, before=panel)
             if getattr(panel, '_last_status', ''):
@@ -1208,6 +1245,8 @@ class App:
         menu = self.base_context_menu
         menu.delete(0, tk.END)
         menu.add_command(label='Свойства базы…',command=lambda: self._base_context_action(iid, row, 'properties'))
+        menu.add_command(label='Перейти в кластер базы', state=tk.NORMAL if row.get('cluster_id') else tk.DISABLED,
+                         command=lambda: self._base_context_action(iid, row, 'cluster'))
         menu.add_separator()
         available = (not self._table_busy() and not self.cluster_infobase.running and
                      row.get('cluster_id') and row.get('infobase_id'))
@@ -1226,6 +1265,8 @@ class App:
             return
         if action == 'properties':
             return show_base_properties(self,row)
+        if action == 'cluster':
+            return self._open_base_cluster(row)
         if action == 'copy':
             self.root.clipboard_clear()
             self.root.clipboard_append(row.get('base', ''))
@@ -1247,6 +1288,15 @@ class App:
                 panel.delete_selected()
                 return
         self._panel_error(panel, 'База не найдена в выбранном кластере. Обновите список.')
+
+    def _open_base_cluster(self, row):
+        if not row.get('cluster_id'):
+            self._panel_error(None, 'У базы нет UUID кластера. Обновите список ИБ.')
+            return
+        # A fresh workspace cannot overwrite a running creation form or its inputs.
+        key = self._open_workspace('cluster_infobase', title='Кластер · ' + row.get('server', ''))
+        panel = self._pages[key]
+        panel.open_context(row)
 
     def _on_update_clicked(self):
         if self.mode == 'home':

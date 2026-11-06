@@ -5,6 +5,7 @@ import tkinter as tk
 from log_colors import configure_log, insert_log
 from tkinter import filedialog, ttk
 from clipboard_shortcuts import bind_entry_shortcuts
+from ui_theme import ParameterSheet
 
 from service_management import (agent_ports, create_command, delete_command, edited_create_command,
                                 installed_agents, rename_command, run_service_command)
@@ -52,19 +53,25 @@ class ServicesPanel(tk.Frame):
         self.state_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
         heading.pack(fill=tk.X, padx=22, pady=(0, 12))
         self._heading_pack = heading.pack_info()
+        heading.configure(bg=c['bg'],highlightthickness=0,padx=0,pady=5)
+        self.title.configure(bg=c['bg'],font=('Segoe UI',18))
+        self.parameters_button=app._button(heading,'Параметры службы',lambda:self.settings_sheet.show())
+        self.parameters_button.pack(side=tk.RIGHT,before=self.title)
 
         body = tk.Frame(self, bg=c["bg"])
         self.body = body
         body.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
         body.columnconfigure(0, weight=1, minsize=330)
-        body.columnconfigure(1, weight=2, minsize=350)
         body.rowconfigure(0, weight=1)
-        left = tk.Frame(body, bg=c["panel"], padx=18, pady=16,
+        self.settings_sheet=ParameterSheet(self,app,c)
+        self.settings_sheet.caption.configure(text='Настройка службы')
+        self._parameters_seen=False
+        left = tk.Frame(self.settings_sheet.content, bg=c["panel"], padx=0, pady=0,
                          highlightthickness=1, highlightbackground=c['border'])
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        left.configure(highlightthickness=0);left.pack(fill=tk.BOTH,expand=True)
         right = tk.Frame(body, bg=c["panel"], padx=18, pady=16,
                           highlightthickness=1, highlightbackground=c['border'])
-        right.grid(row=0, column=1, sticky="nsew")
+        right.grid(row=0, column=0, sticky="nsew")
         left.columnconfigure(0, weight=1)
         left.rowconfigure(0, weight=1)
         # Forms scroll vertically instead of pushing the action bar out of view.
@@ -162,10 +169,16 @@ class ServicesPanel(tk.Frame):
         return entry
 
     def set_compact(self, compact):
+        self.title.configure(font=('Segoe UI',15 if compact else 18))
+        return
         if compact:
             self.heading.pack_forget()
         elif not self.heading.winfo_manager():
             self.heading.pack(**self._heading_pack, before=self.body)
+
+    def workspace_activated(self):
+        if hasattr(self,'settings_sheet') and not self._parameters_seen:
+            self._parameters_seen=True;self.settings_sheet.show()
 
     def _text(self, parent, height):
         widget = tk.Text(parent, height=height, width=20, font=("Consolas", 10), wrap=tk.WORD,
@@ -303,6 +316,7 @@ class ServicesPanel(tk.Frame):
             self.app._panel_error(self, self.description.cget('text'))
             return
         self.app._clear_panel_error(self)
+        if hasattr(self,'settings_sheet'):self.settings_sheet.hide()
         self.running = True
         for widget in (*self.inputs, self.execute_button):
             widget.configure(state=tk.DISABLED)

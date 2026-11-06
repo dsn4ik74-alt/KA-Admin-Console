@@ -6,17 +6,17 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.35-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.35)
-[![ОС](https://img.shields.io/badge/Windows-x64-5749e9?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.35)
+[![Версия](https://img.shields.io/badge/версия-20.33.38-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.38)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.38)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.35-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.35/KA-Admin-Console-20.33.35.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.38-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.38/KA-Admin-Console-20.33.38.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
 </div>
 
-![Публикация ИБ в консоли](assets/overview.png)
-*Версия 20.33.23: публикация ИБ, демонстрационные данные.*
+![Рабочее пространство консоли](assets/overview.png)
+*Версия 20.33.38, демонстрационные данные.*
 
 ## Начать работу
 
@@ -38,18 +38,14 @@
 
 ## Что изменилось
 
-**20.33.35** — очередь передачи нескольких файлов и папок между Windows и Linux. Добавляйте пути, выбирайте несколько файлов в Проводнике или выделяйте объекты источника через Ctrl/Shift → «В очередь». Папки сохраняют свои имена. Есть удаление из очереди, общая отмена, проверка совпадающих имён и предварительный просмотр Robocopy.
+**20.33.38**
 
-**20.33.34** — расшифровка значений в свойствах ИБ и автоматический поиск реестра по порту запущенной службы 1С. Файл кластера открывается только для чтения.
+- Новое оформление стало основным: компактные разделы слева, обновлённые кнопки, поля и таблицы, параметры задачи в отдельной панели. Старое оформление удалено.
+- Верхние вкладки закруглены и сжимаются по ширине окна. При переходе из меню используется уже открытая свободная вкладка; если в ней идёт задача, открывается дополнительная.
+- Размер создаваемого PostgreSQL-бэкапа обновляется без открытия папки в Проводнике, включая формат `pgdir`.
+- Во вкладке ИБ можно перейти в кластер выбранной базы через контекстное меню.
 
 [Предыдущие версии и полный список изменений](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
-
-<details>
-<summary>Настройка доступа PostgreSQL перед установкой</summary>
-
-![Редактор правил pg_hba.conf](assets/access-rules.png)
-
-</details>
 
 ---
 

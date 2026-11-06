@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import simpledialog, ttk
 from uuid import uuid4
 from clipboard_shortcuts import bind_entry_shortcuts
+from ui_controls import icon as line_icon
 
 
 PAGES = {"servers": "Серверы", "bases": "ИБ", "accounts": "Создание УЗ",
@@ -272,9 +273,10 @@ class NavigationLayout:
 
 class BookmarkBar(tk.Frame):
     """Hover menus built from Tk widgets, allowing drag across menu windows."""
-    def __init__(self, parent, colors, saved, activate, changed, vertical=False):
+    def __init__(self, parent, colors, saved, activate, changed, vertical=False, editable=True):
         super().__init__(parent, bg=colors['panel'] if vertical else colors["bg"])
         self.vertical = vertical
+        self.editable = editable
         self.c, self.activate, self.changed = colors, activate, changed
         self.activate_tab = self.can_close_tab = None
         self.open_workspace = self.close_workspace = None
@@ -288,7 +290,7 @@ class BookmarkBar(tk.Frame):
         self._context_menu = None
         self._widgets = []
         self.folder_icon = self._folder_icon()
-        background = colors['panel'] if vertical else colors['bg']
+        background = colors['rail'] if vertical else colors['panel'] if vertical else colors['bg']
         self.canvas = tk.Canvas(self, bg=background, bd=0, highlightthickness=0,
                                 width=1 if vertical else 300, height=1 if vertical else 28)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH if vertical else tk.X, expand=True)
@@ -317,6 +319,9 @@ class BookmarkBar(tk.Frame):
             self.tab_button.pack_forget()
             self.add_button.pack(side=tk.BOTTOM, fill=tk.X, pady=(4, 0), before=self.canvas)
             self.tab_button.pack(side=tk.BOTTOM, fill=tk.X, pady=(4, 0), before=self.canvas)
+        if not editable:
+            self.add_button.pack_forget()
+            self.tab_button.pack_forget()
         self.overflow = tk.Frame(self, bg=colors['bg'])
         self.overflow_buttons = []
         for caption, direction in (('‹', -1), ('›', 1)):
@@ -386,13 +391,17 @@ class BookmarkBar(tk.Frame):
         selected = self.layout.contains(node["id"], self.active)
         section = self.vertical and horizontal
         if section:
-            symbol = {'folder-1c': '◈', 'folder-win': '⊞', 'folder-sql': '▤',
-                      'folder-linux': '⌘', 'scheduler': '◷'}.get(node['id'], '◇' if folder else '•')
-            text = symbol + '   ' + text
-        background = (self.c['accent'] if section else self.c['selected']) if selected else self.c[
+            text=node['title']+('   ›' if folder else '')
+        background = (self.c['selected']) if selected else self.c[
             'bg' if horizontal and not self.vertical else 'panel']
-        foreground = self.c['accent_fg'] if section and selected else self.c['fg']
-        widget = tk.Label(parent, text=text, image=self.folder_icon if folder and not section else "", compound=tk.LEFT,
+        foreground = self.c['fg']
+        if section and not selected:background=self.c['rail']
+        image=self.folder_icon if folder and not section else ''
+        if section:
+            name={'folder-1c':'server','folder-win':'grid','folder-sql':'database','folder-linux':'terminal','scheduler':'clock'}.get(node['id'],'folder' if folder else 'log')
+            image=line_icon(self,name,18,self.c['muted'])
+            text='  '+text
+        widget = tk.Label(parent, text=text, image=image, compound=tk.LEFT,
                           font=("Segoe UI", 9), anchor=tk.W,
                           bg=background, fg=foreground if self.enabled else self.c['muted'],
                           bd=0, padx=8, pady=5 if section else 4, cursor="hand2" if self.enabled else "arrow",
@@ -424,9 +433,10 @@ class BookmarkBar(tk.Frame):
         for widget in self._widgets:
             if widget.winfo_exists():
                 selected = self.layout.contains(widget._node, page)
-                widget._base = self.c['accent' if widget._section else 'selected'] if selected else self.c[
+                widget._base = self.c['selected'] if selected else self.c[
                     "bg" if widget._horizontal and not self.vertical else "panel"]
-                widget._base_fg = self.c['accent_fg'] if widget._section and selected else self.c['fg']
+                widget._base_fg = self.c['fg']
+                if widget._section and not selected:widget._base=self.c['rail']
                 widget.configure(bg=widget._base, fg=widget._base_fg if self.enabled else self.c['muted'])
 
     def breadcrumb(self, page):
@@ -545,12 +555,13 @@ class BookmarkBar(tk.Frame):
         if not node["children"]:
             tk.Label(content, text="Пустая папка · перетащите сюда пункт", bg=self.c["panel"],
                      fg=self.c["muted"], font=("Segoe UI", 9), padx=10, pady=8).pack()
-        tk.Frame(content, bg=self.c["border"], height=1).pack(fill=tk.X, pady=(5, 3))
-        tk.Button(content, text="+ Папка здесь", image=self.folder_icon, compound=tk.LEFT,
-                  command=lambda: self._new_folder(node["id"]), font=("Segoe UI", 9),
-                  bg=self.c["panel"], fg=self.c["muted"], activebackground=self.c["button_hover"],
-                  activeforeground=self.c["fg"], relief="flat", bd=0, padx=8, pady=4, anchor=tk.W,
-                  cursor="hand2").pack(fill=tk.X)
+        if self.editable:
+            tk.Frame(content, bg=self.c["border"], height=1).pack(fill=tk.X, pady=(5, 3))
+            tk.Button(content, text="+ Папка здесь", image=self.folder_icon, compound=tk.LEFT,
+                      command=lambda: self._new_folder(node["id"]), font=("Segoe UI", 9),
+                      bg=self.c["panel"], fg=self.c["muted"], activebackground=self.c["button_hover"],
+                      activeforeground=self.c["fg"], relief="flat", bd=0, padx=8, pady=4, anchor=tk.W,
+                      cursor="hand2").pack(fill=tk.X)
         popup.update_idletasks()
         width = max(190, content.winfo_reqwidth())
         height = min(content.winfo_reqheight(), max(180, self.winfo_screenheight() - 160))
@@ -639,6 +650,7 @@ class BookmarkBar(tk.Frame):
         return None
 
     def _motion(self, event):
+        if not self.editable:return 'break'
         if not self._pressed:
             return
         key, x, y, _ = self._pressed
@@ -738,7 +750,7 @@ class BookmarkBar(tk.Frame):
         self.changed(self.layout.snapshot())
 
     def _new_folder(self, parent=None):
-        if not self.enabled:
+        if not self.enabled or not self.editable:
             return
         self._escape()
         title = simpledialog.askstring("Новая папка", "Название папки:", parent=self.winfo_toplevel())
@@ -787,6 +799,7 @@ class BookmarkBar(tk.Frame):
         self._activate_node(self.layout.find(new_key))
 
     def _rename(self, key):
+        if not self.editable:return
         self._escape()
         node = self.layout.find(key)
         title = simpledialog.askstring("Переименовать", "Новое название:", initialvalue=node["title"],
@@ -795,10 +808,12 @@ class BookmarkBar(tk.Frame):
             self._commit()
 
     def _remove(self, key):
+        if not self.editable:return
         if self.layout.remove_folder(key):
             self._commit()
 
     def _reset(self):
+        if not self.editable:return
         keep = []
         if self.can_close_tab:
             for node, _ in list(self.layout.walk()):
@@ -809,6 +824,7 @@ class BookmarkBar(tk.Frame):
         self._commit()
 
     def _context(self, event, key=None, container=None):
+        if not self.editable:return 'break'
         if not self.enabled:
             return "break"
         self._cancel("_hide_job")
@@ -857,6 +873,7 @@ class BookmarkBar(tk.Frame):
         return "break"
 
     def _move_to(self, key, parent):
+        if not self.editable:return
         if self.layout.move(key, parent):
             self._commit()
 

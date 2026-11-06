@@ -233,6 +233,39 @@ class ClusterInfobasePanel(JobPanel):
         index = self.cluster_combo.current()
         return self.clusters[index] if 0 <= index < len(self.clusters) else None
 
+    def open_context(self, base):
+        """Navigate from the IB list by agent endpoint and exact cluster UUID.
+
+        Uses the already loaded inventory. No create, update, delete or additional
+        sign-in is needed just to enter a cluster.
+        """
+        if self.running:
+            return
+        index = next((i for i, row in enumerate(self.targets)
+                      if self.target_key(row) == self.target_key(base)), -1)
+        if index < 0:
+            self.targets.append(dict(base))
+            self.server_combo.configure(values=[str(row['server'])+':'+str(row['port']) +
+                (' · '+row['version'] if row.get('version') else '') for row in self.targets])
+            index = len(self.targets)-1
+        self.server_combo.current(index)
+        self.server_changed(base['cluster_id'])
+        if not self.selected_cluster():
+            known = dict(cluster=base['cluster_id'], name=base.get('cluster', '').split(' (')[0],
+                         host=base.get('cluster_host', ''), port=base.get('cluster_port', ''),
+                         platform_version=base.get('cluster_version', ''))
+            self.render_clusters([*self.clusters, known], base['cluster_id'])
+        self.base_search.set('')
+        self.render_bases(self.cached_bases(), base.get('infobase_id', ''))
+        selected = self.tree.selection()
+        if selected:
+            self.tree.focus(selected[0])
+            self.tree.see(selected[0])
+        self.tree.focus_set()
+        if hasattr(self,'settings_sheet'):self.settings_sheet.hide()
+        self.app._panel_status(self, 'Открыт кластер базы '+base.get('base', '')+
+                               '. Показан загруженный список; «Обновить список» получает свежие данные.')
+
     def selected_base(self):
         selection = self.tree.selection()
         return self.bases[int(selection[0])] if selection else None

@@ -4,6 +4,7 @@ from pathlib import Path
 import tkinter as tk
 from log_colors import insert_log
 from tkinter import filedialog, messagebox, ttk
+from ui_controls import geometry_widget
 
 from administration_ui import JobPanel
 from postgres_jobs import run_job, read_only_job, ssh_values
@@ -282,7 +283,7 @@ class PostgresPanel(JobPanel):
         remote = self._execution != 'local'
         download = remote and self.mode == 'ibcmd_dump' and not self.dt_keep_remote.get()
         if self.mode == 'ibcmd_dump':
-            self.dt_destination_check.pack(side=tk.RIGHT, before=self.path_entry, padx=(8, 0))
+            self.dt_destination_check.pack(side=tk.RIGHT, before=geometry_widget(self.path_entry), padx=(8, 0))
             system = 'Linux' if remote else 'Windows'
             self.path_label.configure(text='Папка DT на компьютере выполнения · ' + system if self.dt_keep_remote.get() else 'Локальная папка DT · на ВМ с консолью')
         else:

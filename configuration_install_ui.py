@@ -355,6 +355,7 @@ class ConfigurationInstallPanel(JobPanel):
         window.transient(self.app.root)
         panel = ConfigurationTargetPanel(window, self)
         panel.pack(fill=tk.BOTH, expand=True)
+        panel.workspace_activated()
         def close():
             if panel.running:
                 panel.interrupt()

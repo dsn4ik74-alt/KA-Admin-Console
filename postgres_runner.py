@@ -17,6 +17,7 @@ import threading
 import time
 from datetime import datetime
 from collections import deque
+from functools import lru_cache
 from pathlib import Path
 from uuid import uuid4
 
@@ -94,6 +95,47 @@ class ProcessTree:
                     pass
 
 
+@lru_cache(maxsize=1)
+def windows_size_api():
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                  ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.GetFileSizeEx.argtypes = [wintypes.HANDLE, ctypes.POINTER(ctypes.c_longlong)]
+    kernel.GetFileSizeEx.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    return kernel
+
+
+def current_file_size(path):
+    """Query the open file, not Windows' stale directory-enumeration metadata.
+
+    pg_dump keeps worker output files open. FindFirstFile (used by scandir)
+    can retain their old length until another application opens those files.
+    Attribute-only handles share read/write/delete with the running backup.
+    """
+    if os.name != 'nt':
+        return os.stat(path, follow_symlinks=False).st_size
+    import ctypes
+    kernel = windows_size_api()
+    filename = os.path.abspath(path)
+    if not filename.startswith('\\\\?\\'):
+        filename = '\\\\?\\UNC\\' + filename[2:] if filename.startswith('\\\\') else '\\\\?\\' + filename
+    handle = kernel.CreateFileW(filename, 0x80, 7, None, 3, 0x00200000, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        size = ctypes.c_longlong()
+        if not kernel.GetFileSizeEx(handle, ctypes.byref(size)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return size.value
+    finally:
+        kernel.CloseHandle(handle)
+
+
 class BackupSizeWatcher:
     """Measure output on its execution host, independently of utility logs."""
     def __init__(self, source, target, event, interval=1):
@@ -104,7 +146,7 @@ class BackupSizeWatcher:
 
     def measure(self, path, active=True):
         path = Path(path)
-        if not path.is_dir():return path.stat().st_size
+        if not path.is_dir():return current_file_size(path)
         total, pending = 0, [path]
         while pending:
             if active and self.stopped.is_set():return None
@@ -113,7 +155,7 @@ class BackupSizeWatcher:
                     if active and self.stopped.is_set():return None
                     if entry.is_symlink() or getattr(entry, 'is_junction', lambda: False)():continue
                     if entry.is_dir(follow_symlinks=False):pending.append(entry.path)
-                    elif entry.is_file(follow_symlinks=False):total += entry.stat(follow_symlinks=False).st_size
+                    elif entry.is_file(follow_symlinks=False):total += current_file_size(entry.path)
         return total
 
     def sample(self, source=None, active=True):

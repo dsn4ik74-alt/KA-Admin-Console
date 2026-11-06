@@ -32,7 +32,7 @@ class SavedServers:
         bind_entry_shortcuts(widget)
         button = self.app._button(widget.server_actions_row, '⋯', lambda: self.manage(widget))
         button.configure(font=('Segoe UI', 10), padx=7, pady=3)
-        button.pack(side=tk.RIGHT, before=widget, padx=(5, 0))
+        button.pack(side=tk.RIGHT, before=getattr(widget,'_field_shell',widget), padx=(5, 0))
         widget.manage_servers_button = button
         panel.inputs.append(button)
         self.refresh(widget)

@@ -15,6 +15,7 @@ from operation_progress import PERCENT, ProgressState
 from ui_dispatch import JobEvents
 from ui_geometry import delayed_wrap
 from log_colors import configure_log, insert_log
+from ui_theme import RoundedSurface, ParameterSheet
 
 
 SQL_MODES = {"db_backup": "Бэкап БД", "db_restore": "Восстановление БД"}
@@ -52,6 +53,7 @@ class JobPanel(tk.Frame):
         self.actions = tk.Frame(self, bg=colors['panel'], padx=16, pady=12,
                                 highlightthickness=1, highlightbackground=colors['border'])
         self.actions.pack(side=tk.BOTTOM, fill=tk.X, padx=22, pady=(0, 12))
+        self.actions.configure(highlightthickness=0,pady=8)
         self.execute_button = app._button(self.actions, action, self.execute, primary=True)
         self.execute_button.pack(side=tk.RIGHT)
         self.copy_button = app._button(self.actions, 'Копировать', self.copy_results)
@@ -62,18 +64,26 @@ class JobPanel(tk.Frame):
         self.cancel_button.configure(state=tk.DISABLED)
         self.state_label = app._label(self.actions, 'Готово', 9, 'muted', anchor=tk.W)
         self.state_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.title = app._label(self, title, 17, bold=True, anchor=tk.W)
-        self.title.pack(fill=tk.X, padx=22, pady=(2, 14))
+        self.title = app._label(self, title, 18, bold=False, anchor=tk.W)
+        self.title.pack(fill=tk.X, padx=22, pady=(2, 10))
         self.backup_size_label = app._label(self, '', 10, 'accent', bold=True, anchor=tk.W)
         self._backup_measurement = None
-        body = tk.Frame(self, bg=colors['bg'])
-        body.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
+        toolbar=tk.Frame(self,bg=colors['bg']);toolbar.pack(fill=tk.X,padx=22,pady=(0,12))
+        self.parameters_toolbar=toolbar
+        self.parameters_button=app._button(toolbar,'Параметры задачи',lambda:self.settings_sheet.show())
+        self.parameters_button.pack(side=tk.LEFT)
+        self.parameters_summary=app._label(toolbar,'Подключение и параметры выполнения',9,'muted',anchor=tk.W,width=1)
+        self.parameters_summary.pack(side=tk.LEFT,fill=tk.X,expand=True,padx=14)
+        self.page_surface=RoundedSurface(self,colors,padding=17)
+        self.page_surface.pack(fill=tk.BOTH,expand=True,padx=22,pady=(0,12))
+        body=self.page_surface.body
         body.columnconfigure(0, weight=1, minsize=290)
-        body.columnconfigure(1, weight=2, minsize=340)
         body.rowconfigure(0, weight=1)
-        left = tk.Frame(body, bg=colors['panel'], padx=14, pady=14,
+        self.settings_sheet=ParameterSheet(self,app,colors)
+        self._parameters_seen=False
+        left = tk.Frame(self.settings_sheet.content, bg=colors['panel'], padx=0, pady=0,
                          highlightthickness=1, highlightbackground=colors['border'])
-        left.grid(row=0, column=0, sticky='nsew', padx=(0, 12))
+        left.configure(highlightthickness=0);left.pack(fill=tk.BOTH,expand=True)
         left.rowconfigure(0, weight=1)
         left.columnconfigure(0, weight=1)
         canvas = tk.Canvas(left, bg=colors['panel'], bd=0, highlightthickness=0)
@@ -89,8 +99,57 @@ class JobPanel(tk.Frame):
         self.form.bind('<Map>', lambda event: self._bind_wheel(canvas, self.form))
         self.right = tk.Frame(body, bg=colors['panel'], padx=14, pady=14,
                               highlightthickness=1, highlightbackground=colors['border'])
-        self.right.grid(row=0, column=1, sticky='nsew')
+        self.right.grid(row=0, column=0, sticky='nsew')
+        self.right.configure(padx=0,pady=0,highlightthickness=0)
+        self.settings_sheet.lift()
         self.right.columnconfigure(0, weight=1)
+
+    def workspace_activated(self):
+        if not hasattr(self,'settings_sheet'):return
+        parts=[]
+        for name in ('execution','server','host','port','target_host'):
+            variable=getattr(self,name,None)
+            if isinstance(variable,tk.Variable) and variable.get():parts.append(str(variable.get()))
+        self.parameters_summary.configure(text='  ·  '.join(parts) or 'Подключение и параметры выполнения')
+        if not self._parameters_seen:
+            self._parameters_seen=True
+            has_data=bool(getattr(self,'databases',None) or getattr(self,'bases',None))
+            if not has_data:self.settings_sheet.show()
+
+    def adapt_workspace(self,compact):
+        if not hasattr(self,'log_table'):return
+        if getattr(self,'_compact_workspace',None)==compact:return
+        self._compact_workspace=compact
+        if not hasattr(self,'workspace_view_button'):
+            self.workspace_view_button=self.app._button(self.parameters_toolbar,'Журнал',self.toggle_workspace_view)
+        if compact:
+            try:
+                self._normal_sash=self.log_split.sash_coord(0)[1]/max(1,self.log_split.winfo_height())
+            except tk.TclError:self._normal_sash=.6
+            self.workspace_view_button.pack(side=tk.LEFT,padx=(6,0),before=self.parameters_summary)
+            self.set_workspace_view(getattr(self,'_compact_view','table'))
+        else:
+            self.workspace_view_button.pack_forget()
+            for pane in self.log_split.panes():self.log_split.forget(pane)
+            height=max(200,self.log_split.winfo_height())
+            table_height=round(height*max(.2,min(.8,getattr(self,'_normal_sash',.6))))
+            self.log_split.add(self.log_table,minsize=60,height=table_height,stretch='always')
+            self.log_split.add(self.log_journal,minsize=60,height=height-table_height,stretch='always')
+
+    def set_workspace_view(self,view):
+        if not getattr(self,'_compact_workspace',False):return
+        self._compact_view=view
+        desired=self.log_journal if view=='log' else self.log_table
+        for pane in self.log_split.panes():self.log_split.forget(pane)
+        self.log_split.add(desired,minsize=60,stretch='always')
+        self.workspace_view_button.configure(text='Таблица' if view=='log' else 'Журнал')
+
+    def toggle_workspace_view(self):
+        self.set_workspace_view('table' if getattr(self,'_compact_view','table')=='log' else 'log')
+
+    def reveal_table(self):
+        if hasattr(self,'settings_sheet'):self.settings_sheet.hide()
+        self.set_workspace_view('table')
 
     def set_compact(self, compact):
         self._compact_actions=compact
@@ -182,6 +241,8 @@ class JobPanel(tk.Frame):
         self.log_split.add(table, minsize=60, height=250, stretch='always')
         self.log_split.add(journal, minsize=60, height=170, stretch='always')
         self.build_log(row=1, parent=journal)
+        self.log_table,self.log_journal=table,journal
+        table._open_for_field=self.reveal_table
         return table
 
     def append(self, text, level=None):
@@ -216,6 +277,7 @@ class JobPanel(tk.Frame):
     def start(self):
         if self.running:
             return False
+        if hasattr(self,'settings_sheet'):self.settings_sheet.hide()
         self.app.database_sizes.cancel(self)
         self.app._clear_panel_error(self)
         self.running = True
@@ -291,7 +353,7 @@ class JobPanel(tk.Frame):
         name = ntpath.basename(value.get('path', ''))
         prefix = 'Последний размер бэкапа' if value.get('interrupted') else 'Размер бэкапа'
         self.backup_size_label.configure(text=prefix+': '+detail+(' · '+name if name else ''))
-        self.backup_size_label.pack(after=self.title, fill=tk.X, padx=22, pady=(0, 8))
+        self.backup_size_label.pack(before=getattr(self,'page_surface',self.right.master), fill=tk.X, padx=22, pady=(0, 8))
 
     def _show_progress(self):
         if not self.app._panel_visible(self):

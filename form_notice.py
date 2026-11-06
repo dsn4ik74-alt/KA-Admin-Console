@@ -2,6 +2,7 @@
 import tkinter as tk
 
 from ui_geometry import delayed_wrap
+from ui_controls import reveal_field
 
 
 class FormNotice(tk.Frame):
@@ -29,10 +30,11 @@ class FormNotice(tk.Frame):
     @staticmethod
     def reveal(widget):
         """Reveal an invalid field inside a scrolled form without grabbing focus."""
+        reveal_field(widget)
         widget.focus_set()
         parent = widget.master
         while parent is not None:
-            if isinstance(parent, tk.Canvas):
+            if isinstance(parent, tk.Canvas) and not getattr(parent, '_field_shell', False):
                 bounds = parent.bbox('all')
                 if bounds and bounds[3] > parent.winfo_height():
                     offset = widget.winfo_rooty() - parent.winfo_rooty() + parent.canvasy(0)

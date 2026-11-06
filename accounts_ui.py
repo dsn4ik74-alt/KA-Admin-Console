@@ -76,6 +76,9 @@ class AccountsPanel(tk.Frame):
                              bg=c["bg"], fg=c["fg"], insertbackground=c["accent"], relief="flat",
                              selectbackground=c['selected'], selectforeground=c['fg'],
                              padx=10, pady=10, undo=True)
+        self.names.configure(bg=c['panel'],highlightthickness=1,highlightbackground=c['border'],highlightcolor='#7d9ba9')
+        heading.configure(highlightthickness=0,bg=c['bg'])
+        for label in heading.winfo_children():label.configure(bg=c['bg'])
         scroll = ttk.Scrollbar(input_frame, command=self.names.yview)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.names.configure(yscrollcommand=scroll.set)

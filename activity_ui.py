@@ -12,6 +12,7 @@ from table_sorting import TableSorter
 from log_colors import configure_log, insert_log
 from ui_geometry import delayed_wrap
 from ui_theme import RoundedSurface
+from ui_controls import field_parent
 
 
 class OperationLogWindow(tk.Toplevel):
@@ -127,13 +128,18 @@ class ActivityHub:
 
     def install(self, panel):
         self.app.saved_servers.install(panel)
-        frame = tk.Frame(panel.form, bg=panel.c['panel'])
-        frame.pack(fill=tk.X, before=panel.form.pack_slaves()[0], pady=(0, 6))
+        toolbar=getattr(panel,'parameters_toolbar',None)
+        frame = tk.Frame(toolbar if toolbar is not None else panel.form, bg=panel.c['bg'] if toolbar is not None else panel.c['panel'])
+        if toolbar is not None:frame.pack(side=tk.RIGHT,padx=(6,0))
+        else:frame.pack(fill=tk.X, before=panel.form.pack_slaves()[0], pady=(0, 6))
         save = self.app._button(frame, '☆ В избранное', lambda: self.save(panel))
         save.pack(side=tk.LEFT)
         recent = self.app._button(frame, 'Недавние базы ▾', lambda: self.recent_menu(panel, recent))
         recent.pack(side=tk.RIGHT)
         panel.inputs.extend((save, recent))
+        if toolbar is not None:
+            save.configure(text='В избранное',font=('Segoe UI',9),padx=8,pady=4)
+            recent.configure(text='Недавние ▾',font=('Segoe UI',9),padx=8,pady=4)
         trees = [(panel.tree, 'source')]
         if hasattr(panel, 'target_tree'):
             trees.append((panel.target_tree, 'target'))
@@ -144,13 +150,16 @@ class ActivityHub:
             tree.bind('<Button-3>', lambda event, p=panel, side=role: self.database_context(p, side, event))
             if hasattr(panel, 'source_count'):
                 parent = (panel.target_count if role == 'target' else panel.source_count).master
+                header = parent
+                parent = tk.Frame(header, bg=panel.c['panel'])
+                parent.pack(side=tk.BOTTOM, fill=tk.X, pady=(3, 0), before=header.pack_slaves()[0])
             elif hasattr(panel, 'dbms'):
                 parent = tk.Frame(panel.refresh_button.master, bg=panel.c['panel'])
                 # The cluster header owns row 2 (search) and row 3 (address).
                 # Keep selection actions on their own row so they cannot cover the entry.
                 parent.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(6, 0))
             else:
-                parent = panel.filter_entry.master
+                parent = field_parent(panel.filter_entry)
             before = parent.pack_slaves()
             all_button = self.app._button(parent, 'Все', lambda p=panel, side=role: self.unpin(p, side))
             select = self.app._button(parent, 'Выбрать', lambda p=panel, side=role: self.choose_selected(p, side))
@@ -438,9 +447,26 @@ class HomePanel(tk.Frame):
         self.bind('<Destroy>',self.destroyed,add='+')
         quick = tk.Frame(self, bg=app.colors['bg'])
         quick.pack(fill=tk.X, padx=22, pady=(0, 10))
-        app._label(quick, 'Рабочий обзор', 18, bold=True).pack(side=tk.LEFT, padx=(0, 18))
-        for title, mode in (('SQL Server', 'db_backup'), ('PostgreSQL', 'pg_dump'), ('Кластер 1С', 'cluster_infobase')):
-            app._button(quick, title, lambda page=mode: app._open_workspace(page)).pack(side=tk.RIGHT, padx=(6, 0))
+        app._label(quick, 'Панель администратора', 18, anchor='w').pack(fill=tk.X)
+        app._label(quick, 'Выберите действие слева или начните с одной из задач ниже. Каждая задача открывается в своей вкладке.',
+                   9, 'muted', anchor='w', justify=tk.LEFT).pack(fill=tk.X, pady=(4, 0))
+        self.quick_actions = tk.Frame(self, bg=app.colors['panel'], padx=12, pady=10,
+                                      highlightthickness=0)
+        self.quick_actions.pack(fill=tk.X, padx=22, pady=(0, 12))
+        for index, (title, hint, mode) in enumerate((
+                ('Информационные базы', 'Найти и открыть базу 1С', 'bases'),
+                ('Резервное копирование', 'Сохранить базу PostgreSQL', 'pg_dump'),
+                ('Копирование базы', 'Бэкап и восстановление MSSQL', 'db_copy'),
+                ('Планировщик', 'Последовательности и расписание', 'scheduler'))):
+            self.quick_actions.columnconfigure(index, weight=1, uniform='quick-actions')
+            action = tk.Frame(self.quick_actions, bg=app.colors['panel'])
+            action.grid(row=0, column=index, sticky='nsew', padx=(0, 10) if index < 3 else 0)
+            button = app._button(action, title+'  →', lambda page=mode: app._navigate_workspace(page))
+            button.configure(anchor='w', font=('Segoe UI', 10), padx=8)
+            button.pack(fill=tk.X)
+            label = app._label(action, hint, 8, 'muted', anchor='w', justify=tk.LEFT)
+            label.pack(fill=tk.X, pady=(5, 0))
+            delayed_wrap(label, minimum=80)
         self.metrics = {}
         self.metric_strip = tk.Frame(self, bg=app.colors['bg'])
         self.metric_strip.pack(fill=tk.X, padx=22, pady=(3, 16))
@@ -450,16 +476,12 @@ class HomePanel(tk.Frame):
                 ('today', 'Операции сегодня', '≡', '#326dd5', '#e9f0ff'),
                 ('errors', 'Требуют внимания', '!', '#ce465f', '#ffedf1'))):
             self.metric_strip.columnconfigure(column, weight=1, uniform='metrics')
-            surface = RoundedSurface(self.metric_strip, app.colors, padding=14, fit_height=True)
-            surface.grid(row=0, column=column, sticky='nsew', padx=(0, 10) if column < 3 else 0)
-            card = surface.body
-            icon = tk.Label(card, text=symbol, font=('Segoe UI', 17, 'bold'),
-                            bg=background, fg=color, width=2, padx=3, pady=2)
-            icon.pack(side=tk.LEFT, padx=(0, 12))
+            card=tk.Frame(self.metric_strip,bg=app.colors['panel'],padx=16,pady=10)
+            card.grid(row=0,column=column,sticky='nsew')
             info = tk.Frame(card, bg=app.colors['panel'])
             info.pack(side=tk.LEFT, fill=tk.X, expand=True)
             app._label(info, title, 9, 'muted', anchor='w').pack(fill=tk.X)
-            value = app._label(info, '0', 22, bold=True, anchor='w')
+            value = app._label(info, '0', 18, bold=False, anchor='w')
             value.pack(fill=tk.X)
             self.metrics[key] = value
         split = tk.PanedWindow(self, orient=tk.VERTICAL, bg=app.colors['border'], bd=0, sashwidth=7, opaqueresize=False)
@@ -640,6 +662,9 @@ class HomePanel(tk.Frame):
         self._scheduled=[];self._revision=-1;self._schedule_at=0;self.refresh()
 
     def set_compact(self, compact):
+        if hasattr(self, 'quick_actions'):
+            self.quick_actions.pack_forget() if compact else self.quick_actions.pack(
+                fill=tk.X, padx=22, pady=(0, 12), after=self.winfo_children()[0])
         self.detail.pack_forget() if compact else self.detail.pack(fill=tk.X, padx=22, pady=(0, 8))
         if compact:
             self.metric_strip.pack_forget()

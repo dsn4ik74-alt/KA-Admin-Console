@@ -1,10 +1,12 @@
 """Browser-like open workspaces, separate from the persistent action menu."""
 from copy import deepcopy
 import tkinter as tk
+import tkinter.font as tkfont
 from uuid import uuid4
 import re
 
 from bookmark_navigation import PAGES
+from ui_controls import LandscapeButton, icon, rounded_image
 
 
 def page_title(mode):
@@ -67,6 +69,124 @@ class WorkspaceTabs:
     def snapshot(self):return deepcopy(self.entries)
 
 
+def tab_widths(available,count,minimum=34,maximum=232,gap=3):
+    """Share the row before resorting to scrolling at the favicon-only limit."""
+    if count<=0:return []
+    space=max(0,int(available)-gap*(count-1))
+    width=max(minimum,min(maximum,space//count))
+    extra=min(count,max(0,space-width*count)) if width<maximum else 0
+    return [width+(index<extra) for index in range(count)]
+
+
+class BrowserTab(tk.Canvas):
+    """Rounded native tab with a pixel-trimmed caption and full-title tooltip."""
+    def __init__(self,parent,colors,mode,title):
+        self.c=colors;self.title=title;self.selected=False;self.running=False;self.phase=False
+        self.scale=max(1,float(parent.tk.call('tk','scaling'))/(96/72))
+        self.tab_height=round(34*self.scale)
+        super().__init__(parent,bg=colors['bg'],width=round(232*self.scale),height=self.tab_height,
+                         highlightthickness=0,bd=0,cursor='hand2')
+        self.shape=self.create_image(0,0,anchor='nw')
+        self._surface_key=None
+        self.font=tkfont.Font(root=self,font=('Segoe UI',9))
+        name=('database' if mode.startswith(('pg_','db_','ibcmd_')) or mode=='bases' else
+              'server' if mode=='servers' or mode.startswith('service_') else
+              {'accounts':'user','scheduler':'clock','file_transfer':'folder','linux_disk':'terminal',
+               'platform_install':'download','configuration_install':'download','ring_license':'shield'}.get(mode,'grid'))
+        self.symbol=icon(self,name,round(15*self.scale),colors['muted'])
+        self.symbol_small=icon(self,name,round(12*self.scale),colors['muted'])
+        self.dot=tk.Label(self,image=self.symbol,bd=0,font=('Segoe UI',8),anchor='center')
+        self.label=tk.Label(self,font=self.font,anchor='w',bd=0)
+        self.close=tk.Label(self,text='×',font=('Segoe UI',11),anchor='center',bd=0,cursor='hand2')
+        self._tooltip_job=None;self._tooltip=None;self._hover=False;self._caption_key=None
+        self.bind('<Configure>',lambda event:self.render(),add='+')
+        self.bind('<Destroy>',self.closed,add='+')
+        for child in (self,self.dot,self.label,self.close):
+            child.bind('<Enter>',self.enter,add='+');child.bind('<Leave>',self.leave,add='+')
+
+    def set_state(self,selected,running,phase):
+        changed=self.selected!=selected or self.running!=running
+        self.selected,self.running,self.phase=selected,running,phase
+        background=self.c['panel'] if selected else self.c['button']
+        self.label.configure(bg=background,fg=self.c['fg'])
+        self.close.configure(bg=background,fg=self.c['muted'])
+        self.dot.configure(bg=background,image='' if running else self.symbol_small if self.winfo_width()<round(58*self.scale) else self.symbol,text='●' if running else '',
+                           fg='#16a34a' if phase else '#a7d8b5')
+        if changed:self.render()
+
+    def caption(self,available):
+        key=(self.title,available)
+        if key==self._caption_key:return self._caption
+        title=self.title
+        if self.font.measure(title)>available:
+            match=re.search(r' · \d+$',title);tail=match[0] if match else ''
+            if self.font.measure('…'+tail)>available:title=''
+            else:
+                left,right=0,len(title)-len(tail)
+                while left<right:
+                    middle=(left+right+1)//2
+                    if self.font.measure(title[:middle]+'…'+tail)<=available:left=middle
+                    else:right=middle-1
+                title=title[:left]+'…'+tail
+        self._caption_key,self._caption=key,title
+        return title
+
+    def render(self):
+        width,height=self.winfo_width(),self.winfo_height()
+        surface_key=(width,height,self.selected)
+        if surface_key!=self._surface_key:
+            self._surface=rounded_image(self,width,height,self.c['panel'] if self.selected else self.c['button'],
+                                        self.c['border'] if self.selected else None,round(10*self.scale),shared=True)
+            self.itemconfigure(self.shape,image=self._surface);self._surface_key=surface_key
+        tight=width<round(58*self.scale)
+        show_close=not tight or self.selected or self._hover
+        edge=round((3 if tight else 6)*self.scale)
+        close_width=round((12 if tight else 17)*self.scale)
+        symbol_width=round((12 if tight else 15)*self.scale)
+        if show_close:
+            self.close.place(x=max(0,width-edge-close_width),y=4,width=close_width,height=max(1,height-8))
+        else:self.close.place_forget()
+        if tight:
+            self.label.place_forget()
+            x=edge if show_close else max(0,(width-symbol_width)//2)
+            self.dot.place(x=x,y=5,width=symbol_width,height=max(1,height-10))
+        else:
+            self.dot.place(x=edge,y=5,width=symbol_width,height=max(1,height-10))
+            x=edge+symbol_width+round(6*self.scale)
+            available=max(0,width-x-close_width-edge-3)
+            self.label.configure(text=self.caption(available))
+            self.label.place(x=x,y=4,width=available,height=max(1,height-8))
+        if not self.running:self.dot.configure(image=self.symbol_small if tight else self.symbol)
+
+    def enter(self,event=None):
+        self._hover=True;self.render();self.hide_tooltip()
+        if not (getattr(event,'state',0) or 0)&0x100:
+            self._tooltip_job=self.after(550,self.show_tooltip)
+
+    def leave(self,event=None):
+        x,y=self.winfo_pointerxy()
+        if self.winfo_rootx()<=x<self.winfo_rootx()+self.winfo_width() and self.winfo_rooty()<=y<self.winfo_rooty()+self.winfo_height():return
+        self._hover=False;self.render();self.hide_tooltip()
+
+    def show_tooltip(self):
+        self._tooltip_job=None
+        if not self.winfo_ismapped() or not self._hover:return
+        tip=self._tooltip=tk.Toplevel(self);tip.overrideredirect(True)
+        tk.Label(tip,text=self.title,bg='#30383c',fg='#ffffff',font=('Segoe UI',9),padx=9,pady=5).pack()
+        tip.update_idletasks()
+        x=max(0,min(self.winfo_rootx(),self.winfo_screenwidth()-tip.winfo_reqwidth()-8))
+        tip.geometry(f'+{x}+{self.winfo_rooty()+self.winfo_height()+4}')
+
+    def hide_tooltip(self):
+        if self._tooltip_job:self.after_cancel(self._tooltip_job);self._tooltip_job=None
+        if self._tooltip:
+            tip,self._tooltip=self._tooltip,None
+            if tip.winfo_exists():tip.destroy()
+
+    def closed(self,event):
+        if event.widget is self:self.hide_tooltip()
+
+
 class WorkspaceTabStrip(tk.Frame):
     def __init__(self,parent,colors,saved,activate,close,new,changed):
         super().__init__(parent,bg=colors['bg'])
@@ -74,11 +194,12 @@ class WorkspaceTabStrip(tk.Frame):
         self.activate,self.close_tab,self.new,self.changed=activate,close,new,changed
         self.widgets={};self.active='home';self.running=set();self._blink=None;self._phase=False
         self._press=None;self._drag=False;self._menu=None
-        self.home=tk.Button(self,text='⌂ Главная',command=lambda:self.activate('home'),font=('Segoe UI',9),
-            bg=colors['panel'],fg=colors['fg'],bd=0,relief='flat',padx=10,pady=7,cursor='hand2')
+        self._layout_job=None
+        self.scale=max(1,float(self.tk.call('tk','scaling'))/(96/72))
+        self.home=LandscapeButton(self,'Главная',lambda:self.activate('home'),colors)
+        self.home.configure(font=('Segoe UI',9),padx=7,pady=5)
         self.home.pack(side=tk.LEFT,padx=(0,5))
-        self.plus=tk.Button(self,text='+',command=self.new,font=('Segoe UI',13),bg=colors['button'],
-            fg=colors['fg'],bd=0,relief='flat',padx=10,pady=1,cursor='hand2')
+        self.plus=LandscapeButton(self,'+',self.new,colors);self.plus.configure(padx=4,pady=5)
         self.plus.pack(side=tk.RIGHT,padx=(5,0))
         self.arrows=tk.Frame(self,bg=colors['bg'])
         for text,step in (('‹',-1),('›',1)):
@@ -93,33 +214,41 @@ class WorkspaceTabStrip(tk.Frame):
         self.redraw()
 
     def _size(self,event=None):
-        self.canvas.configure(scrollregion=self.canvas.bbox('all'))
-        height=max(32,self.items.winfo_reqheight())
-        if int(self.canvas.cget('height'))!=height:self.canvas.configure(height=height)
-        overflow=self.items.winfo_reqwidth()>self.canvas.winfo_width()+2
+        if self._layout_job is None:self._layout_job=self.after_idle(self._layout)
+
+    def _layout(self):
+        self._layout_job=None
+        count=len(self.model.entries);gap=round(3*self.scale);minimum=round(34*self.scale)
+        available=max(1,self.canvas.winfo_width())
+        full=available+(self.arrows.winfo_reqwidth()+6 if self.arrows.winfo_manager() else 0)
+        overflow=count*minimum+max(0,count-1)*gap>full
         if overflow and not self.arrows.winfo_manager():self.arrows.pack(side=tk.RIGHT,before=self.canvas,padx=3)
         elif not overflow and self.arrows.winfo_manager():self.arrows.pack_forget()
+        widths=tab_widths(available,count,minimum,round(232*self.scale),gap)
+        for row,width in zip(self.model.entries,widths):
+            tab=self.widgets[row['key']]
+            if int(tab.cget('width'))!=width:tab.configure(width=width)
+        height=round(36*self.scale)
+        if int(self.canvas.cget('height'))!=height:self.canvas.configure(height=height)
+        total=sum(widths)+max(0,count-1)*gap
+        self.canvas.configure(scrollregion=(0,0,max(1,total),height))
+        if total<=available:self.canvas.xview_moveto(0)
 
     def redraw(self):
         for row in self.model.entries:
             key=row['key']
             if key not in self.widgets:
-                frame=tk.Frame(self.items,bg=self.c['button'],highlightthickness=1,highlightbackground=self.c['border'],cursor='hand2')
-                dot=tk.Label(frame,text='●',font=('Segoe UI',8),width=2,bd=0);dot.pack(side=tk.LEFT)
-                label=tk.Label(frame,font=('Segoe UI',9),anchor='w',width=24,pady=7,bd=0);label.pack(side=tk.LEFT)
-                close=tk.Label(frame,text='×',font=('Segoe UI',11),padx=7,pady=3,bd=0);close.pack(side=tk.LEFT)
-                frame.dot,frame.label,frame.close=dot,label,close;self.widgets[key]=frame
-                for widget in (frame,dot,label):
+                frame=BrowserTab(self.items,self.c,row['mode'],row['title'])
+                self.widgets[key]=frame
+                for widget in (frame,frame.dot,frame.label):
                     widget.bind('<ButtonPress-1>',lambda event,k=key:self.press(event,k))
                     widget.bind('<B1-Motion>',self.motion)
                     widget.bind('<ButtonRelease-1>',lambda event,k=key:self.release(event,k))
                     widget.bind('<Button-2>',lambda event,k=key:self.request_close(k))
                     widget.bind('<Button-3>',lambda event,k=key:self.context(event,k))
-                close.bind('<Button-1>',lambda event,k=key:self.request_close(k))
-            self.widgets[key].pack_forget();self.widgets[key].pack(side=tk.LEFT,padx=(0,3),pady=(0,2))
-            title=row['title'];suffix=re.search(r' · \d+$',title)
-            tail=suffix[0] if suffix else ''
-            self.widgets[key].label.configure(text=title if len(title)<=25 else title[:24-len(tail)]+'…'+tail)
+                frame.close.bind('<Button-1>',lambda event,k=key:self.request_close(k))
+            self.widgets[key].title=row['title']
+            self.widgets[key].pack_forget();self.widgets[key].pack(side=tk.LEFT,padx=(0,round(3*self.scale)),pady=(0,2))
         for key in set(self.widgets)-{row['key'] for row in self.model.entries}:self.widgets.pop(key).destroy()
         self.set_active(self.active)
         self._size()
@@ -138,10 +267,7 @@ class WorkspaceTabStrip(tk.Frame):
         self.active=key
         self.home.configure(bg=self.c['panel'] if key=='home' else self.c['button'],fg=self.c['accent'] if key=='home' else self.c['fg'])
         for item,frame in self.widgets.items():
-            background=self.c['panel'] if item==key else self.c['button']
-            frame.configure(bg=background,highlightbackground=self.c['accent'] if item==key else self.c['border'])
-            for widget in (frame.label,frame.close):widget.configure(bg=background,fg=self.c['fg'])
-            frame.dot.configure(bg=background,fg=('#16a34a' if self._phase else '#b0dec0') if item in self.running else background)
+            frame.set_state(item==key,item in self.running,self._phase)
 
     def reveal(self,key):
         self.items.update_idletasks()
@@ -161,11 +287,14 @@ class WorkspaceTabStrip(tk.Frame):
         self._phase=not self._phase;self.set_active(self.active);self._blink=self.after(650,self.blink)
 
     def press(self,event,key):
+        self.widgets[key].hide_tooltip()
         self._press=(key,event.x_root);self._drag=False
         return 'break'
 
     def motion(self,event):
-        if self._press and abs(event.x_root-self._press[1])>6:self._drag=True
+        if self._press and abs(event.x_root-self._press[1])>6:
+            self._drag=True
+            self.widgets[self._press[0]].hide_tooltip()
         return 'break'
 
     def release(self,event,key):
@@ -178,6 +307,7 @@ class WorkspaceTabStrip(tk.Frame):
         return 'break'
 
     def context(self,event,key):
+        if key in self.widgets:self.widgets[key].hide_tooltip()
         if self._menu:self._menu.destroy()
         row=self.model.find(key)
         if row is None:return
@@ -189,5 +319,6 @@ class WorkspaceTabStrip(tk.Frame):
         finally:self._menu.grab_release()
 
     def destroyed(self,event):
-        if event.widget is self and self._blink is not None:
-            self.after_cancel(self._blink);self._blink=None
+        if event.widget is self:
+            if self._blink is not None:self.after_cancel(self._blink);self._blink=None
+            if self._layout_job is not None:self.after_cancel(self._layout_job);self._layout_job=None
