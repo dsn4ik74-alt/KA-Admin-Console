@@ -57,7 +57,7 @@ from search_query import matches as matches_query
 from infobase_users_ui import InfobaseUsersPanel
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "21.0"
+APP_VERSION = "21.1"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -559,6 +559,9 @@ class App:
             else:
                 if panel is self._schedule_target:self._schedule_target=self.scheduler
                 for alias in [name for name,value in self._pages.items() if value is panel]:del self._pages[alias]
+                for window in tuple(self.root.winfo_children()):
+                    if isinstance(window,tk.Toplevel) and getattr(window,'panel',None) is panel:
+                        window.destroy()
                 panel.destroy()
         return True
 
