@@ -187,6 +187,8 @@ def serve(path, stop=None, dispatch=execute_step, once=False):
     with executor_lock(path) as acquired:
         if not acquired:
             return 0
+        if (store.meta('update_until') or 0)>time.time():
+            return 0
         owner = uuid4().hex
         store.meta('stop', False)
         store.interrupted()
@@ -196,7 +198,7 @@ def serve(path, stop=None, dispatch=execute_step, once=False):
                 if time.monotonic() - last_heartbeat >= 5:
                     store.meta('heartbeat', dict(at=time.time(), pid=os.getpid(), run_id=''))
                     last_heartbeat = time.monotonic()
-                if store.meta('stop'):
+                if store.meta('stop') or (store.meta('update_until') or 0)>time.time():
                     break
                 run = store.claim(owner)
                 if run:

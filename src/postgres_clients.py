@@ -1,9 +1,10 @@
 """Find the PostgreSQL client sets included with source or the frozen EXE."""
 from pathlib import Path
+from app_paths import resource_root
 
 
 def bundled_tools(root=None):
-    base = Path(root) if root is not None else Path(__file__).resolve().parent / 'vendor' / 'postgresql'
+    base = Path(root) if root is not None else resource_root() / 'vendor' / 'postgresql'
     result = {}
     if not base.is_dir():
         return result

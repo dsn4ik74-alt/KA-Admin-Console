@@ -54,7 +54,7 @@ from postgres_runner import OperationCancelled
 from ui_controls import LandscapeButton, LandscapeEntry, reveal_field, install_action_flow, decorate_search_fields
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.38"
+APP_VERSION = "20.33.39"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -198,6 +198,8 @@ class App:
         self._event_job = self.root.after(50, self._drain_events)
         self._switch_mode('home')
         self._discover(startup=True)
+        if '--ka-updated' in sys.argv:
+            self.root.after(1000, self._resume_after_update)
 
     def _activity_destroyed(self, event):
         if event.widget == self.root:
@@ -282,6 +284,8 @@ class App:
         self.lst_lbl.pack_forget();self.lst_lbl.pack(fill=tk.X,pady=(5,10))
         self.history_button = self._button(navigation, 'История', lambda: self.hub.dialog('history'))
         self.history_button.pack(side=tk.RIGHT)
+        self.update_button = self._button(navigation, 'Обновить приложение', self._show_update)
+        self.update_button.pack(side=tk.RIGHT, padx=6)
         self.favorites_button = self._button(navigation, '☆ Избранное', lambda: self.hub.dialog('favorites'))
         self.favorites_button.pack(side=tk.RIGHT, padx=6)
         self.btn_update = self._button(navigation, "Обновить", self._on_update_clicked, primary=True)
@@ -1482,7 +1486,31 @@ class App:
         except OSError as exc:
             self._status(f"Не удалось сохранить настройки: {exc}")
 
-    def _on_close(self):
+    def _show_update(self):
+        from app_update_ui import UpdateWindow
+        window=getattr(self,'_updater',None)
+        if window is not None and window.winfo_exists():window.lift();return
+        self._updater=UpdateWindow(self,APP_VERSION)
+
+    def _resume_after_update(self):
+        def resume():
+            try:
+                store=self.scheduler.store
+                if store.path.is_file():
+                    self.scheduler.ensure_store()
+                    store.meta('update_until',0);store.meta('stop',False)
+                    if '--resume-scheduler' in sys.argv:
+                        from scheduler_windows import control
+                        control('start',store.path)
+                self._post(self._status,'Приложение обновлено до '+APP_VERSION)
+            except Exception as exc:self._post(self._status,'Приложение обновлено. Проверьте фоновый планировщик: '+str(exc))
+        threading.Thread(target=resume,daemon=True).start()
+
+    def _on_close(self, before_exit=None):
+        updater=getattr(self,'_updater',None)
+        if updater is not None and updater.winfo_exists() and updater.busy:
+            self._status('Дождитесь завершения загрузки обновления или отмените её в окне обновления.')
+            return
         if self._opening_bases:
             self._status('Дождитесь запуска клиента 1С или нажмите «Прервать открытие» во вкладке «ИБ».')
             return
@@ -1498,9 +1526,10 @@ class App:
             self._status("Дождитесь завершения фоновых задач или прервите их во вкладках с зелёным индикатором.")
             return
         for panel in set(self._pages.values()):
-            if isinstance(panel, WinDirStatPanel) and not panel.close(self._on_close):
+            if isinstance(panel, WinDirStatPanel) and not panel.close(lambda:self._on_close(before_exit)):
                 self._status('Ожидание закрытия WinDirStat…')
                 return
+        if before_exit is not None:before_exit()
         self._stop.set()
         if self._ras_manager:
             self._ras_manager.close()

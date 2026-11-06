@@ -3,6 +3,7 @@ import contextlib
 import hashlib
 import json
 import os
+from app_paths import resource_root
 from pathlib import Path
 import re
 import shutil
@@ -21,7 +22,7 @@ def version_key(value):
 
 
 def bundled_root():
-    return Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'vendor' / '1c-ras'
+    return resource_root() / 'vendor' / '1c-ras'
 
 
 def cache_root():

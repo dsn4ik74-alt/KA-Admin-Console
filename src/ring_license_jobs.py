@@ -1,6 +1,7 @@
 """Portable license checks locally, by WinRM + SMB, or by Linux SSH."""
 from contextlib import contextmanager
 import hashlib
+from app_paths import resource_root
 from pathlib import Path, PureWindowsPath
 import sys
 import tempfile
@@ -17,7 +18,7 @@ from ssh_jobs import run_script
 
 def bundle_path(system):
     name={'local':'windows-x64.zip','windows':'windows-x64.zip','linux':'linux-x64.tar.gz'}[system]
-    path=Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent))/'vendor/ring'/name
+    path=resource_root()/'vendor/ring'/name
     if not path.is_file():raise ValueError('Во встроенном комплекте отсутствует '+name+'. Используйте полную сборку приложения.')
     return path
 

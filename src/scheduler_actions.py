@@ -2,6 +2,7 @@
 from copy import deepcopy
 from dataclasses import asdict
 import os
+from app_paths import resource_root
 from pathlib import Path, PureWindowsPath
 import re
 import sys
@@ -32,7 +33,7 @@ def bundle_paths(value, restore=False):
                 bundle_paths(item, restore) for key, item in value.items()}
     if isinstance(value, list):
         return [bundle_paths(item, restore) for item in value]
-    root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    root = resource_root()
     if isinstance(value, str):
         # Favorites and old jobs may contain another process's onefile path.
         # Only rebase our vendor subtree; leave user executables/data untouched.

@@ -30,14 +30,15 @@ for filename in ('windows-x64.zip','linux-x64.tar.gz'):
     pg_data.append((str(Path(SPECPATH)/'vendor'/'ring'/filename),'vendor/ring'))
 
 a = Analysis(
-    ['1C Console.py'],
-    pathex=[],
+    ['src/1C Console.py'],
+    pathex=[str(Path(SPECPATH) / 'src')],
     binaries=pg_binaries,
-    datas=[('create_users.ps1', '.'), ('archive_jr.ps1', '.'), ('postgres_runner.py', '.'), ('linux_platform_runner.py', '.'),
-           ('ssh_job_runner.py','.'),('linux_disk_scan.py','.'),('linux_disk_delete.py','.'),('postgres_install_linux.py','.'),
-           ('web_publication_linux.py','.'),('web_publication_windows.ps1','.'),
-           ('postgres_access.py','.'),
-           ('ring_license.py','.'),('ring_license_linux.py','.'),('ring_license_windows.ps1','.'),
+    datas=[('src/create_users.ps1', '.'), ('src/archive_jr.ps1', '.'), ('src/postgres_runner.py', '.'), ('src/linux_platform_runner.py', '.'),
+           ('src/ssh_job_runner.py','.'),('src/linux_disk_scan.py','.'),('src/linux_disk_delete.py','.'),('src/postgres_install_linux.py','.'),
+           ('src/web_publication_linux.py','.'),('src/web_publication_windows.ps1','.'),
+           ('src/postgres_access.py','.'),
+           ('src/ring_license.py','.'),('src/ring_license_linux.py','.'),('src/ring_license_windows.ps1','.'),
+           ('src/app_update_windows.ps1','.'),
            ('vendor/efd-format/LICENSE.txt','vendor/efd-format')] + pg_data,
     hiddenimports=[],
     hookspath=[],

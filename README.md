@@ -6,17 +6,17 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-20.33.38-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.38)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.38)
+[![Версия](https://img.shields.io/badge/версия-20.33.39-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.39)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v20.33.39)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.38-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.38/KA-Admin-Console-20.33.38.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-20.33.39-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v20.33.39/KA-Admin-Console-20.33.39.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
 </div>
 
 ![Рабочее пространство консоли](assets/overview.png)
-*Версия 20.33.38, демонстрационные данные.*
+*Версия 20.33.39, демонстрационные данные.*
 
 ## Начать работу
 
@@ -38,6 +38,14 @@
 
 ## Что изменилось
 
+**20.33.39**
+
+- Добавлена кнопка **«Обновить приложение»**: проверка релиза, загрузка патча, проверка и перезапуск с сохранением настроек.
+- Патч переносит только изменившиеся части EXE. Если для установленной версии его нет, полный ZIP скачивается только после подтверждения.
+- Исходники перенесены в [`src`](src), чтобы корень репозитория оставался компактным.
+
+Для перехода со старой версии без кнопки обновления один раз скачайте ZIP. Патчи применяются из приложения начиная с этой версии.
+
 **20.33.38**
 
 - Новое оформление стало основным: компактные разделы слева, обновлённые кнопки, поля и таблицы, параметры задачи в отдельной панели. Старое оформление удалено.
@@ -51,4 +59,4 @@
 
 Нашли проблему? [Создайте обращение](https://github.com/dsn4ik74-alt/KA-Admin-Console/issues) и приложите версию приложения и текст ошибки без паролей.
 
-В репозитории — исходники приложения. Готовый комплект со встроенными утилитами находится в **Releases**; для сборки из исходников сторонние утилиты нужно подготовить отдельно.
+Исходники находятся в **src**, готовый комплект со встроенными утилитами — в **Releases**. Запуск исходников: `python "src/1C Console.py"`; для сборки из исходников сторонние утилиты нужно подготовить отдельно.

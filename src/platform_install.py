@@ -1,6 +1,7 @@
 """Read 1C MSI metadata and install through Windows Installer with native progress."""
 import ctypes
 from ctypes import wintypes
+from app_paths import resource_root
 from pathlib import Path, PureWindowsPath
 import os
 import re
@@ -23,7 +24,7 @@ _MSI_LOCK = threading.Lock()
 
 
 def seven_zip():
-    root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    root = resource_root()
     path = root / 'vendor' / '7zip' / '7z.exe'
     if not path.is_file():
         raise RuntimeError('Встроенный 7-Zip не найден')

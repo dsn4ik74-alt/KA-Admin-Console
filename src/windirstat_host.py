@@ -4,6 +4,7 @@ from ctypes import wintypes
 import hashlib
 import json
 import os
+from app_paths import resource_root
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ from uuid import uuid4
 
 
 def vendor_directory():
-    return Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'vendor' / 'windirstat'
+    return resource_root() / 'vendor' / 'windirstat'
 
 
 def cache_file(source, destination, digest):

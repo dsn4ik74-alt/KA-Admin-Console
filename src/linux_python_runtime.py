@@ -1,6 +1,7 @@
 """Pinned Linux interpreters bundled with the Windows console for SSH jobs."""
 import hashlib
 import json
+from app_paths import resource_root
 from pathlib import Path
 import sys
 
@@ -9,7 +10,7 @@ def runtime_for(machine):
     arch = {'x86_64': 'x86_64', 'amd64': 'x86_64', 'aarch64': 'aarch64', 'arm64': 'aarch64'}.get(machine.strip())
     if not arch:
         raise ValueError('Встроенный Python для Linux поддерживает x64 и ARM64. Архитектура ВМ: ' + machine.strip())
-    root = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'vendor' / 'python-linux'
+    root = resource_root() / 'vendor' / 'python-linux'
     manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
     entry = manifest[arch]
     archive = root / entry['file']
