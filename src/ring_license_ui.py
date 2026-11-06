@@ -1,5 +1,6 @@
 """Software-license inventory and hardware validation in a separate workspace."""
 import tkinter as tk
+from search_query import matches as matches_query
 from tkinter import filedialog, ttk
 
 from administration_ui import JobPanel
@@ -187,7 +188,7 @@ class RingLicensePanel(SshFields,JobPanel):
         query=self.filter.get().casefold().strip()
         visible={}
         for name,row in self.rows.items():
-            if query and query not in ' '.join(str(row.get(c,'')) for c in self.tree['columns']).casefold():continue
+            if not matches_query([row.get(c,'') for c in self.tree['columns']],query):continue
             tag='valid' if row.get('validation_code')==0 else 'failed' if row.get('validation_code') is not None or row.get('info_code') else ''
             self.tree.insert('',tk.END,iid=name,values=[row.get(c,'—') for c in self.tree['columns']],tags=(tag,));visible[name]=row
         self.sorter.apply(visible)

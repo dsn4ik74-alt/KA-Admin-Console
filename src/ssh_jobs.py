@@ -41,6 +41,8 @@ def run_script(module,values,payload,event,cancel,files=(),elevate=False):
                 sources=[(source_root/'ssh_job_runner.py','runner.py'),(source_root/(module+'.py'),'task.py')]
                 if module=='postgres_install_linux':sources.append((source_root/'postgres_access.py','postgres_access.py'))
                 if module=='ring_license_linux':sources.append((source_root/'ring_license.py','ring_license.py'))
+                if module=='web_publication_linux':
+                    sources.extend((source_root/name,name) for name in ('publication_config.py','search_query.py'))
                 for source,name in sources:
                     sftp.put(str(source),root+'/'+name,confirm=True)
                 manifests=[]

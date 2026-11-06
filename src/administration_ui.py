@@ -4,6 +4,7 @@ import re
 import threading
 import time
 import tkinter as tk
+from search_query import matches as matches_query
 from tkinter import filedialog, messagebox, ttk
 
 from archive_jr import archive_logs
@@ -647,7 +648,7 @@ class SqlPanel(JobPanel):
         for row in self.databases:
             if hasattr(self.app, 'hub') and not self.app.hub.visible(self, 'source', row['name']):
                 continue
-            if query_text in row['name'].casefold():
+            if matches_query(row['name'],query_text):
                 key = self.tree.insert('', tk.END, values=(row['name'], format_size(row.get('data_bytes')),
                                        format_size(row.get('log_bytes')), format_size(row.get('total_bytes')),
                                        row['recovery_model_desc']), tags=('odd' if visible % 2 else 'even',))

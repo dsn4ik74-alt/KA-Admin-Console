@@ -3,12 +3,14 @@ import os
 import threading
 import tkinter as tk
 from log_colors import configure_log, insert_log
-from tkinter import filedialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from clipboard_shortcuts import bind_entry_shortcuts
 from ui_theme import ParameterSheet
+from publication_config import full_text_match,state
+from table_sorting import TableSorter
 
 from service_management import (agent_ports, create_command, delete_command, edited_create_command,
-                                installed_agents, rename_command, run_service_command)
+                                installed_agents, list_services, rename_command, run_service_command)
 
 
 SERVICE_MODES = {"service_create": ("Создать службу 1С", "Создать службу"),
@@ -29,8 +31,11 @@ class ServicesPanel(tk.Frame):
         self._results = {}
         self._create_draft = None
         self._writing_preview = False
+        self._services=[];self._services_loaded=False;self._listing=False;self._reload_services=False;self._selected_service_name=None
+        self._service_filter_job=None
         self._build()
         self.show_mode(self.mode)
+        self.bind('<Destroy>',self._closed_inventory,add='+')
 
     def _build(self):
         app, c = self.app, self.c
@@ -135,6 +140,30 @@ class ServicesPanel(tk.Frame):
         app._label(right, "Команда и результат", 12, bold=True).pack(anchor=tk.W, pady=(0, 10))
         self.description = app._label(right, "", 10, "muted", anchor=tk.W, justify=tk.LEFT, wraplength=480)
         self.description.pack(fill=tk.X, pady=(0, 10))
+        self.service_panes=tk.PanedWindow(right,orient=tk.VERTICAL,bg=c['panel'],bd=0,sashwidth=7,showhandle=True,relief=tk.FLAT)
+        self.service_panes.pack(fill=tk.BOTH,expand=True)
+        self.service_inventory=tk.Frame(self.service_panes,bg=c['panel'])
+        inventory_bar=tk.Frame(self.service_inventory,bg=c['panel']);inventory_bar.pack(fill=tk.X,pady=(0,6))
+        self.service_filter=tk.StringVar();self.service_search=app._entry(inventory_bar,self.service_filter,width=18)
+        self.service_search.pack(side=tk.LEFT,fill=tk.X,expand=True,padx=(0,6));self.service_search.set_hint('Поиск служб · имя, отображаемое имя…')
+        self.refresh_services_button=app._button(inventory_bar,'Обновить список',self.refresh_services);self.refresh_services_button.pack(side=tk.RIGHT)
+        self.inputs.extend((self.service_search,self.refresh_services_button))
+        table=tk.Frame(self.service_inventory,bg=c['panel']);table.pack(fill=tk.BOTH,expand=True);table.rowconfigure(0,weight=1);table.columnconfigure(0,weight=1)
+        self.services_tree=ttk.Treeview(table,columns=('name','display_name','state'),show='headings',selectmode='browse',height=6)
+        for column,title,width in (('name','Имя службы',250),('display_name','Отображаемое имя',380),('state','Состояние',140)):
+            self.services_tree.heading(column,text=title,anchor='center');self.services_tree.column(column,width=width,minwidth=100,anchor='center')
+        self.services_tree.grid(row=0,column=0,sticky='nsew')
+        scroll=ttk.Scrollbar(table,command=self.services_tree.yview);scroll.grid(row=0,column=1,sticky='ns')
+        horizontal=ttk.Scrollbar(table,orient=tk.HORIZONTAL,command=self.services_tree.xview);horizontal.grid(row=1,column=0,sticky='ew')
+        self.services_tree.configure(yscrollcommand=scroll.set,xscrollcommand=horizontal.set)
+        self.services_sorter=TableSorter(self.services_tree,colors=c)
+        self.services_tree.tag_configure('on',foreground=c['success']);self.services_tree.tag_configure('off',foreground=c['danger'])
+        self.services_tree.bind('<<TreeviewSelect>>',lambda event:self.select_service())
+        self.services_tree.bind('<Double-1>',lambda event:self.select_service(force=True) if self.services_tree.identify_region(event.x,event.y) in ('cell','tree') else None)
+        self.service_count=app._label(self.service_inventory,'Список служб ещё не загружен.',9,'muted',anchor='w');self.service_count.pack(fill=tk.X,pady=4)
+        self.service_filter.trace_add('write',self.queue_service_filter)
+        self.command_area=tk.Frame(self.service_panes,bg=c['panel']);self.service_panes.add(self.command_area,minsize=90,stretch='always')
+        right=self.command_area
         self.preview_tools = tk.Frame(right, bg=c['panel'])
         self.preview_tools.pack(fill=tk.X, pady=(0, 6))
         self.reset_command_button = app._button(self.preview_tools, 'Из полей', self.reset_command)
@@ -170,15 +199,12 @@ class ServicesPanel(tk.Frame):
 
     def set_compact(self, compact):
         self.title.configure(font=('Segoe UI',15 if compact else 18))
-        return
-        if compact:
-            self.heading.pack_forget()
-        elif not self.heading.winfo_manager():
-            self.heading.pack(**self._heading_pack, before=self.body)
 
     def workspace_activated(self):
         if hasattr(self,'settings_sheet') and not self._parameters_seen:
-            self._parameters_seen=True;self.settings_sheet.show()
+            self._parameters_seen=True
+            if self.mode=='service_create':self.settings_sheet.show()
+            else:self.settings_sheet.hide()
 
     def _text(self, parent, height):
         widget = tk.Text(parent, height=height, width=20, font=("Consolas", 10), wrap=tk.WORD,
@@ -207,11 +233,71 @@ class ServicesPanel(tk.Frame):
         self.execute_button.configure(bg=self.execute_button._base_bg)
         if mode == 'service_create':
             self.preview_tools.pack(fill=tk.X, pady=(0, 6), before=self.preview)
+            if str(self.service_inventory) in tuple(map(str,self.service_panes.panes())):self.service_panes.forget(self.service_inventory)
+            self.preview.configure(height=5)
         else:
             self.preview_tools.pack_forget()
+            if str(self.service_inventory) not in tuple(map(str,self.service_panes.panes())):
+                self.service_panes.forget(self.command_area)
+                self.service_panes.add(self.service_inventory,minsize=100,height=260,stretch='always')
+                self.service_panes.add(self.command_area,minsize=90,height=160,stretch='always')
+            self.preview.configure(height=2)
+            if not self._services_loaded:self.refresh_services()
         self._refresh()
 
         self._show_result()
+
+    def refresh_services(self):
+        if self._listing:self._reload_services=True;return
+        self._listing=True;self.refresh_services_button.configure(state=tk.DISABLED);self.service_count.configure(text='Получение служб Windows…',fg=self.c['muted'])
+        operation=list_services
+        def worker():
+            try:rows=operation();error=''
+            except Exception as exc:rows=[];error=str(exc)
+            self.app._post(self.services_loaded,rows,error)
+        threading.Thread(target=worker,daemon=True).start()
+
+    def services_loaded(self,rows,error=''):
+        if not self.winfo_exists():return
+        self._listing=False;self.refresh_services_button.configure(state=tk.DISABLED if self.running else tk.NORMAL)
+        if error:self.service_count.configure(text=error,fg=self.c['danger'])
+        else:self._services=list(rows);self._services_loaded=True;self.render_services()
+        if self._reload_services:self._reload_services=False;self.refresh_services()
+
+    def queue_service_filter(self,*args):
+        if self._service_filter_job is not None:self.after_cancel(self._service_filter_job)
+        self._service_filter_job=self.after(120,self._apply_service_filter)
+
+    def _apply_service_filter(self):
+        self._service_filter_job=None;self.render_services()
+
+    def render_services(self):
+        if self._service_filter_job is not None:self.after_cancel(self._service_filter_job)
+        self._service_filter_job=None
+        selected=self.services_tree.selection();name=self.services_tree.set(selected[0],'name') if selected else ''
+        self.services_tree.delete(*self.services_tree.get_children());self._visible_services=[]
+        for row in self._services:
+            text,tag=state(row.get('state'))
+            shown=dict(row,state=text)
+            if not full_text_match(shown,self.service_filter.get()):continue
+            key=str(len(self._visible_services));self._visible_services.append(row)
+            self.services_tree.insert('',tk.END,iid=key,values=(row['name'],row['display_name'],text),tags=(tag,))
+            if row['name']==name:self.services_tree.selection_set(key);self.services_tree.focus(key)
+        self.services_sorter.apply();self.service_count.configure(text='Показано: '+str(len(self._visible_services))+' / '+str(len(self._services)),fg=self.c['muted'])
+
+    def select_service(self,force=False):
+        if self.running:return
+        selection=self.services_tree.selection()
+        if not selection:return
+        row=self._visible_services[int(selection[0])]
+        if not force and self._selected_service_name==(self.mode,row['name']):return
+        self._selected_service_name=(self.mode,row['name'])
+        if self.mode=='service_rename':
+            self.rename_name.set(row['name']);self.display_name.set(row['display_name']);self.settings_sheet.show()
+        elif self.mode=='service_delete':self.delete_name.set(row['name'])
+
+    def _closed_inventory(self,event):
+        if event.widget is self and self._service_filter_job is not None:self.after_cancel(self._service_filter_job);self._service_filter_job=None
 
     def _show_result(self):
         text, status, color = self._results.get(self.mode, ('', '', 'muted'))
@@ -315,6 +401,7 @@ class ServicesPanel(tk.Frame):
         if command is None:
             self.app._panel_error(self, self.description.cget('text'))
             return
+        if command.action=='delete' and not messagebox.askyesno('Удалить службу Windows?',command.name+'\n\nУдалить регистрацию этой службы? Файлы программы и данные не удаляются.',parent=self.app.root,default='no'):return
         self.app._clear_panel_error(self)
         if hasattr(self,'settings_sheet'):self.settings_sheet.hide()
         self.running = True
@@ -328,9 +415,10 @@ class ServicesPanel(tk.Frame):
         token = self.app.activity.begin(dict(operation='Службы Windows · ' + command.action,
             server=os.environ.get('COMPUTERNAME', 'localhost'), database=command.name, executor='Windows'))
 
+        operation=run_service_command
         def worker():
             try:
-                output = run_service_command(command)
+                output = operation(command)
                 self.app.activity.end(token, 'Успешно')
                 self.app._post(self.finish, command, output, "")
             except Exception as exc:
@@ -354,3 +442,6 @@ class ServicesPanel(tk.Frame):
         self.app._panel_status(self, f"Ошибка управления службой: {command.name}" if error else messages[command.action])
         if error:
             self.app._panel_error(self, error, title='Ошибка выполнения')
+        elif self.mode in ('service_rename','service_delete'):
+            if command.action=='delete' and self.delete_name.get()==command.name:self.delete_name.set('');self._selected_service_name=None
+            self.refresh_services()

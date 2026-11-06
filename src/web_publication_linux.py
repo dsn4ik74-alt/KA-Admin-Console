@@ -4,12 +4,14 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import time
 from uuid import uuid4
 import xml.etree.ElementTree as ET
 
 from ssh_job_runner import execute, Cancelled
+from publication_config import metadata, update_services, apache_publications, remove_apache_publication
 
 VH = re.compile(r'<VirtualHost\s+([^>]+)>(.*?)</VirtualHost\s*>', re.I | re.S)
 
@@ -53,7 +55,13 @@ def site_data(path):
         body=match[2]
         name=re.search(r'^\s*ServerName\s+([^\s#]+)',body,re.I|re.M)
         folder=re.search(r'^\s*DocumentRoot\s+"?([^"\r\n]+)',body,re.I|re.M)
-        rows.append(dict(id=str(path)+'#'+str(index),name=name[1] if name else path.stem,
+        endpoints=[]
+        for address in match[1].split():
+            ip,sep,port=address.rpartition(':')
+            if sep and port.isdigit():
+                endpoints.append(dict(protocol='https' if re.search(r'^\s*SSLEngine\s+on',body,re.I|re.M) or port=='443' else 'http',
+                                      host=name[1].split(':')[0] if name else '',ip=ip,port=int(port)))
+        rows.append(dict(id=str(path)+'#'+str(index),name=name[1] if name else path.stem,endpoints=endpoints,
                          bindings=match[1].strip(),path=folder[1].strip() if folder else '',config_path=str(path),index=index,
                          etag=hashlib.sha256(read(path)).hexdigest(),
                          state='Включён' if any(p.resolve()==path for p in Path('/etc/apache2/sites-enabled').glob('*.conf')) else 'Выключен'))
@@ -72,6 +80,22 @@ def selected(p):
     return Path(path),text,list(VH.finditer(text))[int(index)]
 
 
+def publication_metadata(row,details=False):
+    result=dict(row)
+    module=result.get('module_path','')
+    version=re.search(r'(?<!\d)(\d+\.\d+\.\d+\.\d+)(?!\d)',module)
+    result['version']=version[1] if version else '';result['version_source']='path'
+    path=Path(result.get('vrd_path') or (result['path']+'/default.vrd'))
+    result['is_1c']=path.is_file();result['vrd_path']=str(path)
+    if path.is_file():
+        try:
+            raw=read(path);info=metadata(raw)
+            if not details:info.pop('services',None)
+            result.update(info,etag=hashlib.sha256(raw).hexdigest())
+        except (OSError,ValueError) as exc:result['metadata_error']=str(exc)
+    return result
+
+
 def inspect(p):
     sites=[]
     for path in sorted(Path('/etc/apache2/sites-available').glob('*.conf'))[:500]:
@@ -79,18 +103,48 @@ def inspect(p):
     platforms=[]
     for tool in sorted(Path('/opt/1cv8').glob('*/*/webinst')):
         platforms.append(dict(version=tool.parent.name,bin=str(tool.parent)))
-    publications=[]
+    publications=[];cache={}
+    module_paths=[]
+    sources=list(Path('/etc/apache2/mods-enabled').glob('*.load'))
+    sources+=list(Path('/etc/apache2/conf-enabled').glob('*.conf'))
+    sources.append(Path(p.get('main_conf') or '/etc/apache2/apache2.conf'))
+    for source in sources[:500]:
+        if source.is_file():
+            for loaded in re.finditer(r'^\s*LoadModule\s+\S+\s+"?([^"\r\n]*wsap(?:24|22)\.so)',read(source).decode('utf-8-sig'),re.I|re.M):
+                if loaded[1].strip() not in module_paths:module_paths.append(loaded[1].strip())
     for site in sites:
-        _,text,match=selected(dict(site=site['id']))
-        for marker in re.finditer(r'# KA-1C ([\w-]+) BEGIN\n(.*?)# KA-1C \1 END',match[2],re.S):
-            directory=re.search(r'ManagedApplicationDescriptor\s+"([^"]+)/default\.vrd"',marker[2],re.I)
-            publications.append(dict(site=site['id'],name=marker[1],path=directory[1] if directory else '',pool=''))
-        known={row['name'] for row in publications if row['site']==site['id']}
-        for alias in re.finditer(r'^\s*Alias\s+"?(/[^"\s]+)"?\s+"([^"\r\n]+)"',match[2],re.I|re.M):
-            name=alias[1].strip('/')
-            if name not in known:
-                publications.append(dict(site=site['id'],name=name,path=alias[2].rstrip('/'),pool=''))
-    return dict(sites=sites,publications=publications,pools=[],certificates=[],platforms=platforms)
+        file=site['config_path']
+        if file not in cache:cache[file]=list(VH.finditer(read(file).decode('utf-8-sig')))
+        for row in apache_publications(cache[file][site['index']][2]):
+            row.update(site=site['id'],pool='',state=site['state'])
+            if not row.get('module_path') and len(module_paths)==1:row['module_path']=module_paths[0]
+            publications.append(publication_metadata(row))
+    return dict(hostname=socket.gethostname(),sites=sites,publications=publications,pools=[],certificates=[],platforms=platforms)
+
+
+def selected_publication(p):
+    path,text,match=selected(p)
+    row=next((row for row in apache_publications(match[2]) if row['name']==p.get('alias')),None)
+    if not row or Path(row['path']).resolve()!=Path(p['directory']).resolve():
+        raise ValueError('Публикация изменилась. Обновите список.')
+    row.update(site=p['site'],pool='',state=site_data(path)[int(p['site'].rpartition('#')[2])]['state'])
+    return path,text,match,row
+
+
+def browse_publication(row,p,cancel):
+    root=Path(row['path']).resolve();target=Path(p.get('browse_path') or root).resolve()
+    if os.path.commonpath((str(root),str(target)))!=str(root) or not target.is_dir():
+        raise ValueError('Каталог вне выбранной публикации или не существует')
+    rows=[];truncated=False
+    with os.scandir(target) as entries:
+        for item in entries:
+            if cancel.is_set():raise Cancelled('Просмотр прерван')
+            if len(rows)>=10000:truncated=True;break
+            try:
+                stat=item.stat(follow_symlinks=False)
+                rows.append(dict(name=item.name,path=item.path,directory=item.is_dir(),link=item.is_symlink(),size=stat.st_size,modified=stat.st_mtime))
+            except OSError:rows.append(dict(name=item.name,path=item.path,directory=False,error='Недостаточно прав'))
+    return dict(path=str(target),root=str(root),entries=rows,truncated=truncated)
 
 
 def main(p,event,cancel):
@@ -108,6 +162,26 @@ def main(p,event,cancel):
     if action=='server_restart':
         configtest();run(['systemctl','restart','apache2'])
         return dict(text='Служба Apache перезапущена.')
+    if action in ('publication_properties','publication_services','publication_browse'):
+        path,text,match,row=selected_publication(p)
+        if action=='publication_browse':return browse_publication(row,p,cancel)
+        # Include the actual globally loaded module when it is outside the VirtualHost.
+        for known in inspect(p)['publications']:
+            if known['site']==row['site'] and known['name']==row['name']:row.update(known);break
+        info=publication_metadata(row,details=True)
+        if action=='publication_properties':return info
+        vrd=Path(info['vrd_path']);raw=read(vrd)
+        if hashlib.sha256(raw).hexdigest()!=p['etag']:raise ValueError('default.vrd изменился. Обновите свойства перед применением.')
+        updated=update_services(raw,p['changes'])
+        if hashlib.sha256(read(vrd)).hexdigest()!=p['etag']:raise ValueError('default.vrd изменился во время подготовки. Обновите свойства.')
+        backup(vrd,event)
+        try:write(vrd,updated);configtest();reload()
+        except Exception:
+            write(vrd,raw)
+            try:reload()
+            except Exception:pass
+            raise
+        return dict(publication_metadata(row,details=True),text='Настройки WS/HS сохранены.')
     if action=='site_create':
         name=p.get('site_name','')
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}',name):raise ValueError('Имя сайта: латинские буквы, цифры, _ и -')
@@ -161,7 +235,17 @@ def main(p,event,cancel):
     if not re.fullmatch(r'[\w-]{1,80}',alias):raise ValueError('Некорректное имя публикации')
     marker=re.compile(r'\n?# KA-1C '+re.escape(alias)+r' BEGIN\n.*?# KA-1C '+re.escape(alias)+r' END\n?',re.S)
     existing=marker.search(match[2])
-    if action=='unpublish' and not existing:raise ValueError('Эта публикация не создана консолью. Отредактируйте конфигурацию сайта вручную.')
+    if action=='unpublish' and not existing:
+        body=remove_apache_publication(match[2],alias,p['directory'])
+        updated=text[:match.start()]+f'<VirtualHost {match[1]}>'+body+'</VirtualHost>'+text[match.end():]
+        backup(path,event)
+        try:write(path,updated.encode());configtest();reload()
+        except Exception:
+            write(path,text.encode())
+            try:reload()
+            except Exception:pass
+            raise
+        return dict(text='Публикация снята: /'+alias+'. Файлы и база сохранены.')
     if action=='publish' and existing and not p.get('replace'):raise ValueError('Публикация уже существует. Включите замену.')
     fragment=''
     vrd_path=None;previous_vrd=None
@@ -209,7 +293,15 @@ def main(p,event,cancel):
         updated=text[:match.start()]+f'<VirtualHost {match[1]}>'+body+'</VirtualHost>'+text[match.end():]
         try:write(path,updated.encode());configtest()
         except Exception:write(path,text.encode());raise
-    reload()
+    try:reload()
+    except Exception:
+        write(path,text.encode())
+        if action=='publish' and vrd_path is not None:
+            if previous_vrd is None:vrd_path.unlink(missing_ok=True)
+            else:write(vrd_path,previous_vrd)
+        try:reload()
+        except Exception:pass
+        raise
     return dict(text=('Опубликовано: /' if action=='publish' else 'Публикация снята: /')+alias)
 
 

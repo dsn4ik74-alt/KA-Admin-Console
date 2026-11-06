@@ -26,13 +26,17 @@ try {
 '''
 
 
-def run_script(code, data, on_event, *, environment=None, require_done=True, secrets=()):
+def run_script(code, data, on_event, *, environment=None, require_done=True, secrets=(), bitness=None,
+               cancellation_message=None):
     if os.name != "nt":
         raise RuntimeError("Для этой операции нужен Windows PowerShell")
     cancel_event = getattr(on_event, '__dict__', {}).get('cancel_event')
     if cancel_event is not None and cancel_event.is_set():
         raise OperationCancelled('Операция прервана пользователем')
     executable = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if bitness not in (None, 32, 64):raise ValueError('Unsupported PowerShell architecture')
+    if bitness == 32:
+        executable = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'SysWOW64/WindowsPowerShell/v1.0/powershell.exe'
     encoded = base64.b64encode(BOOTSTRAP.encode("utf-16-le")).decode("ascii")
     process = subprocess.Popen([str(executable), "-NoLogo", "-NoProfile", "-NonInteractive",
                                 "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded],
@@ -100,7 +104,7 @@ def run_script(code, data, on_event, *, environment=None, require_done=True, sec
                 on_event(event)
         returncode = process.wait()
         if cancel_sent is not None and done is None:
-            raise OperationCancelled('Запрос прерван пользователем. SQL Server может продолжать откат; '
+            raise OperationCancelled(cancellation_message or 'Запрос прерван пользователем. SQL Server может продолжать откат; '
                                      'неполный бэкап нельзя использовать для восстановления.')
         if fatal or returncode or (require_done and done is None):
             reason = f"PowerShell завершился с кодом {returncode}" if returncode else "PowerShell не вернул результат"

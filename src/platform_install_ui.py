@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
+from search_query import matches as matches_query
 from tkinter import filedialog, messagebox, ttk
 
 from administration_ui import JobPanel
@@ -668,7 +669,7 @@ class PlatformInstallPanel(JobPanel):
         self.release_tree.delete(*self.release_tree.get_children())
         search = self.version_search.get().strip().casefold()
         for index, row in enumerate(self.releases):
-            if search in (row['version'] + ' ' + row['date']).casefold():
+            if matches_query([row['version'],row['date']],search):
                 self.release_tree.insert('', 'end', iid=str(index), values=(row['version'], row['date']))
         self.release_sorter.apply({str(index): dict(version='.'.join(part.zfill(10) for part in row['version'].split('.')),
                                   date=datetime.strptime(row['date'], '%d.%m.%Y').strftime('%Y%m%d') if row['date'] else '')
@@ -681,7 +682,7 @@ class PlatformInstallPanel(JobPanel):
         self.distribution_tree.delete(*self.distribution_tree.get_children())
         search = self.distribution_search.get().strip().casefold()
         for index, row in enumerate(self.distributions):
-            if (row.get('os', 'windows') == 'linux') != self.is_linux() or search not in row['title'].casefold():
+            if (row.get('os', 'windows') == 'linux') != self.is_linux() or not matches_query(row['title'],search):
                 continue
             # RPM packages do not apply to the selected Ubuntu/Debian mode.
             if self.is_linux() and '.rpm' in row.get('filename', '').casefold():

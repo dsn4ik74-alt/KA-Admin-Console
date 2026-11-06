@@ -2,6 +2,7 @@
 from copy import deepcopy
 from pathlib import Path
 import tkinter as tk
+from search_query import matches as matches_query
 from tkinter import filedialog, messagebox, ttk
 
 from administration_ui import JobPanel
@@ -131,7 +132,7 @@ class ConfigurationInstallPanel(JobPanel):
         query, values = self.searches[key].get().strip().casefold(), {}
         columns = tree['columns']
         for index, row in enumerate(rows):
-            if query and query not in ' '.join(str(row.get(c, '')) for c in columns).casefold():
+            if not matches_query([row.get(c,'') for c in columns],query):
                 continue
             item = str(index)
             tree.insert('', tk.END, iid=item, values=[row.get(c, '') for c in columns])

@@ -52,9 +52,12 @@ from workspace_tabs import WorkspaceTabStrip, split_legacy_tabs, page_title
 from cluster_registry_ui import show_base_properties
 from postgres_runner import OperationCancelled
 from ui_controls import LandscapeButton, LandscapeEntry, reveal_field, install_action_flow, decorate_search_fields
+from ui_wheel import install_choice_wheel_guard
+from search_query import matches as matches_query
+from infobase_users_ui import InfobaseUsersPanel
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "20.33.39"
+APP_VERSION = "21.0"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -155,6 +158,7 @@ class App:
         self.root = tk.Tk()
         self.root.report_callback_exception = self._report_callback_exception
         install_edit_shortcuts(self.root)
+        install_choice_wheel_guard(self.root)
         self.root.title(f"{APP_NAME} · {APP_VERSION}")
         self.root.geometry("1480x880")
         self.root.minsize(960, 540)
@@ -649,7 +653,8 @@ class App:
                     'configuration_install': ConfigurationInstallPanel,
                     'scheduler': SchedulerPanel,
                     'windirstat': WinDirStatPanel, 'postgres_install': PostgresInstallPanel, 'linux_disk': LinuxDiskPanel,
-                    'web_publication':WebPublicationPanel,'file_transfer':FileTransferPanel,'ring_license':RingLicensePanel}.get(mode))
+                     'web_publication':WebPublicationPanel,'file_transfer':FileTransferPanel,'ring_license':RingLicensePanel,
+                     'infobase_users':InfobaseUsersPanel}.get(mode))
         if factory is None:
             return self._pages.get(mode)
         panel = factory(self.root, self, C)
@@ -683,6 +688,10 @@ class App:
         elif self.mode == 'postgres_install':
             panel=self._current_panel();index=panel.tabs.index(panel.tabs.select())
             panel.search_entries[list(panel.trees)[index]].focus_set()
+        elif self.mode == 'web_publication':
+            self._current_panel().focus_search()
+        elif self.mode == 'infobase_users':
+            self._current_panel().search_entry.focus_set()
         elif self.mode in ('db_copy', 'pg_copy'):
             self._current_panel().filter_entry.focus_set()
         elif self.mode in SQL_MODES:
@@ -696,6 +705,9 @@ class App:
         elif self.mode == "accounts":
             self.accounts.names.focus_set()
         elif self.mode in SERVICE_MODES:
+            if self.mode != 'service_create':
+                self._current_panel().service_search.focus_set()
+                return 'break'
             for widget in self.services.forms[self.mode].winfo_children():
                 if isinstance(widget, tk.Entry):
                     widget.focus_set()
@@ -1079,7 +1091,7 @@ class App:
         if self.mode == 'bases' and self._base_pin is not None:
             source = [item for item in source if self._base_identity(item) == self._base_pin]
         fields = columns if self.mode == "servers" else ["server", "base", "cluster", "address"]
-        items = [item for item in source if not query or any(query in str(item.get(key, "")).casefold() for key in fields)]
+        items = [item for item in source if matches_query([item.get(key,'') for key in fields],query)]
         if self._sort_col in columns:
             key = self._sort_col
             items.sort(key=lambda item: int(item[key]) if key == "port" else text_key(item.get(key, "")),
@@ -1186,6 +1198,7 @@ class App:
                       'web_publication':'Публикация 1С и управление IIS / Apache · локально Windows, удалённо WinRM / SSH',
                       'file_transfer':'Windows ↔ Windows / Linux · источник не удаляется, передача выполняется в фоне',
                       'ring_license':'Программные лицензии 1С · список, сведения и проверка привязки на этом компьютере или удалённом Windows / Linux',
+                      'infobase_users':'Выберите базы и подключитесь пользователем 1С с правами администрирования пользователей',
                       'home': 'Избранное, последние базы и история операций', "servers": "Список серверов",
                       "bases": "Обновите список баз или отфильтруйте загруженные данные",
                       "accounts": "Введите ФИО сотрудников. Создание выполняется на этом компьютере.",
@@ -1249,7 +1262,7 @@ class App:
         menu = self.base_context_menu
         menu.delete(0, tk.END)
         menu.add_command(label='Свойства базы…',command=lambda: self._base_context_action(iid, row, 'properties'))
-        menu.add_command(label='Перейти в кластер базы', state=tk.NORMAL if row.get('cluster_id') else tk.DISABLED,
+        menu.add_command(label='Перейти в кластер · консоль 1С (MMC)', state=tk.NORMAL if row.get('server') and row.get('port') else tk.DISABLED,
                          command=lambda: self._base_context_action(iid, row, 'cluster'))
         menu.add_separator()
         available = (not self._table_busy() and not self.cluster_infobase.running and
@@ -1294,13 +1307,15 @@ class App:
         self._panel_error(panel, 'База не найдена в выбранном кластере. Обновите список.')
 
     def _open_base_cluster(self, row):
-        if not row.get('cluster_id'):
-            self._panel_error(None, 'У базы нет UUID кластера. Обновите список ИБ.')
+        host=str(row.get('server') or '').strip();port=str(row.get('port') or '')
+        if not host or not port.isdigit() or not 0<int(port)<=65535:
+            self._panel_error(None, 'У базы не указан адрес агента сервера 1С. Обновите список ИБ.')
             return
-        # A fresh workspace cannot overwrite a running creation form or its inputs.
-        key = self._open_workspace('cluster_infobase', title='Кластер · ' + row.get('server', ''))
-        panel = self._pages[key]
-        panel.open_context(row)
+        target=next((dict(item) for item in self.all_items if str(item.get('server','')).casefold()==host.casefold()
+                     and str(item.get('port',''))==port),dict(server=host,port=port))
+        target.update(server=host,port=port)
+        if row.get('version'):target['version']=row['version']
+        self._do_connect(target)
 
     def _on_update_clicked(self):
         if self.mode == 'home':
@@ -1318,6 +1333,7 @@ class App:
             if self.mode=='web_publication':panel.inspect();return
             if self.mode=='file_transfer':panel.list_source();return
             if self.mode=='ring_license':panel.run_check('list');return
+            if self.mode=='infobase_users':panel.connect();return
             if (panel, 'source') in self.hub.refresh_buttons:
                 role = 'source'
                 focused = self.root.focus_get()

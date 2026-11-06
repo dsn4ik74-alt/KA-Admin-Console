@@ -27,7 +27,7 @@ class UpdateCancelled(Exception):
 
 
 def version(value):
-    if not isinstance(value, str) or not re.fullmatch(r'\d+(?:\.\d+){2,3}', value):
+    if not isinstance(value, str) or not re.fullmatch(r'\d+(?:\.\d+){1,3}', value):
         raise ValueError('Неизвестный формат версии обновления')
     parts = tuple(map(int, value.split('.')))
     return parts + (0,) * (4-len(parts))

@@ -10,6 +10,23 @@ import subprocess
 from console_core import platform_roots
 
 
+def list_services():
+    """Read the local SCM inventory; never start, stop or reconfigure a service."""
+    if os.name!='nt':raise RuntimeError('Список служб доступен только в Windows')
+    from powershell_jobs import run_script
+    code=r'''
+param($p)
+$ErrorActionPreference='Stop'
+$rows=@(Get-Service | ForEach-Object {
+    $state='Unknown';try {$state=[string]$_.Status} catch {}
+    @{name=$_.Name;display_name=$_.DisplayName;state=$state}
+})
+@{kind='done';data=@{services=$rows}} | ConvertTo-Json -Compress -Depth 5
+'''
+    rows=run_script(code,{},lambda event:None)['data'].get('services',[])
+    return sorted(rows,key=lambda row:(row['display_name'].casefold(),row['name'].casefold()))
+
+
 def installed_agents():
     agents = {}
     for root in platform_roots():

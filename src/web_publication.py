@@ -20,7 +20,7 @@ def descriptor(alias, connection, web=True, services=True, http=True, odata=Fals
             or (server and not re.search(r'(?i)(?:^|;)\s*Ref\s*=',connection))):
         raise ValueError('Строка ИБ: Srvr="сервер:1541";Ref="база"; либо File="каталог";')
     root = ET.Element('{'+NS+'}point', dict(base='/'+alias, ib=connection, enable=str(bool(web)).lower()))
-    ET.SubElement(root, '{'+NS+'}ws', dict(publishByDefault=str(bool(services)).lower()))
+    ET.SubElement(root, '{'+NS+'}ws', dict(enable=str(bool(services)).lower(),pointEnableCommon=str(bool(services)).lower()))
     ET.SubElement(root, '{'+NS+'}httpServices', dict(publishByDefault=str(bool(http)).lower()))
     ET.SubElement(root, '{'+NS+'}standardOData', dict(enable=str(bool(odata)).lower()))
     ET.indent(root, space='  ')
@@ -34,13 +34,26 @@ def validate(values):
     if p['os'] == 'linux' and p['server'] == 'iis':
         raise ValueError('IIS работает только на Windows. Для Linux выберите Apache 2.4.')
     actions = {'inspect','publish','unpublish','read_config','save_config','site_create','site_start','site_stop','site_delete',
-               'pool_create','pool_start','pool_stop','pool_recycle','pool_delete','binding_add','binding_delete','install','server_restart'}
+               'pool_create','pool_start','pool_stop','pool_recycle','pool_delete','binding_add','binding_delete','install','server_restart',
+               'publication_properties','publication_services','publication_convert','publication_browse'}
     if p.get('action') not in actions:
         raise ValueError('Неизвестная операция веб-сервера')
     if p['action'] in ('publish','unpublish','site_start','site_stop','site_delete','binding_add','binding_delete') and not p.get('site'):
         raise ValueError('Сначала подключитесь и выберите конкретный сайт')
     if p['action'].startswith('pool_') and not p.get('pool'):
         raise ValueError('Выберите или укажите имя пула IIS')
+    if p['action'].startswith('publication_'):
+        if not p.get('site') or not p.get('directory'):raise ValueError('Выберите публикацию из списка')
+        if p['action']=='publication_convert' and (p['server']!='iis' or not p.get('pool')):
+            raise ValueError('Для преобразования в приложение IIS выберите существующий пул')
+        if p['action']=='publication_services':
+            if not re.fullmatch('[0-9a-fA-F]{64}',str(p.get('etag',''))):raise ValueError('Сначала обновите свойства публикации')
+            changes=p.get('changes')
+            if not isinstance(changes,list) or not changes or len(changes)>10000:raise ValueError('Не выбраны сервисы')
+            for change in changes:
+                if (not isinstance(change,dict) or type(change.get('enabled')) is not bool or
+                    not re.fullmatch(r'(?:ws/(?:enabled|default|extensions|point/\d+)|hs/(?:default|extensions|service/\d+))',str(change.get('id','')))):
+                    raise ValueError('Неверная настройка сервиса')
     if p['action'] in ('binding_add','binding_delete','site_create'):
         try:port=int(p.get('port',0))
         except (ValueError,TypeError):raise ValueError('Некорректный порт сайта') from None
@@ -65,7 +78,7 @@ def validate(values):
             raise ValueError('Конфигурация превышает 2 МБ')
         if p.get('config_kind') in ('vrd','web','iis'):
             validate_xml(p['text'])
-    for name in ('site','alias','directory','platform','main_conf','config_path','pool','hostname','site_path','certificate'):
+    for name in ('site','alias','directory','platform','main_conf','config_path','pool','hostname','site_path','certificate','browse_path'):
         if any(c in str(p.get(name,'')) for c in '\r\n\x00'):
             raise ValueError('Недопустимые символы: '+name)
     return p

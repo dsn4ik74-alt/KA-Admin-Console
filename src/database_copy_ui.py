@@ -1,5 +1,6 @@
 """Explicit source/target workflows, retaining the backup used for restore."""
 import tkinter as tk
+from search_query import matches as matches_query
 from tkinter import messagebox, ttk
 
 from administration_ui import SqlPanel
@@ -155,7 +156,7 @@ class SqlCopyPanel(SqlPanel):
         for item in self.databases:
             if hasattr(self.app, 'hub') and not self.app.hub.visible(self, 'target', item['name']):
                 continue
-            if query_text not in item['name'].casefold():
+            if not matches_query(item['name'],query_text):
                 continue
             row = self.target_tree.insert('', tk.END, values=(item['name'], format_size(item.get('data_bytes')),
                 format_size(item.get('log_bytes')), format_size(item.get('total_bytes')), item['recovery_model_desc']))
@@ -450,7 +451,7 @@ class PostgresCopyPanel(PostgresPanel):
         for item in self.target_databases:
             if hasattr(self.app, 'hub') and not self.app.hub.visible(self, 'target', item['name']):
                 continue
-            if query_text not in item['name'].casefold():
+            if not matches_query(item['name'],query_text):
                 continue
             row = self.target_tree.insert('', tk.END, values=(item['name'], format_size(item.get('size_bytes')), item.get('owner', '')))
             values[row] = dict(name=item['name'], size=item.get('size_bytes'), owner=item.get('owner', ''))

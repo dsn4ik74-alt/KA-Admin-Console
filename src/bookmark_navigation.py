@@ -18,7 +18,7 @@ PAGES = {"servers": "Серверы", "bases": "ИБ", "accounts": "Создан
          "scheduler": "Планировщик", "configuration_install": "Установка конфигураций",
          "postgres_install": "Установка PostgreSQL из ИТС", "linux_disk": "Анализ диска по SSH",
          "web_publication": "Публикация ИБ", "file_transfer": "Передача файлов / Robocopy",
-         "ring_license": "Лицензии 1С · ring"}
+         "ring_license": "Лицензии 1С · ring", "infobase_users": "Создать пользователя в базе"}
 
 
 def postgres_folder():
@@ -35,6 +35,7 @@ def default_layout():
     return [{"id": "folder-1c", "title": "1С", "children": [
                 {"id": "servers", "title": PAGES["servers"]},
                 {"id": "bases", "title": PAGES["bases"]},
+                {"id": "infobase_users", "title": PAGES["infobase_users"]},
                 {"id": "cluster_infobase", "title": PAGES["cluster_infobase"]},
                 {"id": "jr_archive", "title": PAGES["jr_archive"]},
                 {"id": "platform_install", "title": PAGES["platform_install"]},
@@ -157,7 +158,7 @@ class NavigationLayout:
                 parent=self.find('folder-sql') if key=='postgres_install' else None
                 (parent['children'] if parent is not None and 'children' in parent else self.nodes).append(folder)
             folder['children'].append(dict(id=key,title=PAGES[key]));seen.add(key)
-        for key, folder_key in (('web_publication','folder-1c'),('file_transfer','folder-win'),('ring_license','folder-1c')):
+        for key, folder_key in (('web_publication','folder-1c'),('file_transfer','folder-win'),('ring_license','folder-1c'),('infobase_users','folder-1c')):
             if key not in seen:
                 folder=self.find(folder_key)
                 (folder['children'] if folder and 'children' in folder else self.nodes).append({'id':key,'title':PAGES[key]})

@@ -1,6 +1,8 @@
 """Publication, sites, IIS pools/bindings and versioned server configuration."""
 import tkinter as tk
 from tkinter import messagebox, ttk
+import socket
+import webbrowser
 
 from administration_ui import JobPanel
 from admin_connections_ui import show_help, with_ssh_trust
@@ -8,6 +10,9 @@ from ssh_forms import SshFields
 from web_publication import descriptor, operate
 from infobase_address import infobase_address
 from console_core import version_key
+from publication_config import full_text_match, publication_urls, state
+from table_sorting import TableSorter
+from ui_controls import icon
 
 
 def prompt(app, title, fields):
@@ -31,6 +36,10 @@ class WebPublicationPanel(SshFields,JobPanel):
     def __init__(self,parent,app,colors):
         super().__init__(parent,app,colors,'Публикация ИБ · IIS / Apache','Опубликовать ИБ')
         self.enable_cancellation()
+        self._local_hostname=socket.gethostname()
+        self.detail_windows=set();self._render_jobs={};self._rendering=False
+        self.refresh_sites_button=app._button(self.parameters_toolbar,'Обновить список сайтов',self.inspect)
+        self.refresh_sites_button.pack(side=tk.LEFT,padx=(8,0));self.inputs.append(self.refresh_sites_button)
         self.system=tk.StringVar(value='Windows');self.web_server=tk.StringVar(value='IIS')
         self.where=tk.StringVar(value='Этот компьютер')
         self.combos=[]
@@ -86,33 +95,63 @@ class WebPublicationPanel(SshFields,JobPanel):
                   'Редактор applicationHost.config даёт расширенные параметры IIS; отдельные функции MMC не повторяются кнопками.')
         table=self.split_log();self.tabs=ttk.Notebook(table);self.tabs.grid(row=0,column=0,sticky='nsew')
         self.trees={};self.rows={};self.catalog={};self.loaded_config=None;self.context=None;self.selected_certificate=''
+        self.search_variables={};self.search_entries={};self.state_filters={};self.sorters={};self.filter_combos=[]
+        self.site_scope=tk.BooleanVar(value=False);self.only_1c=tk.BooleanVar(value=False);self.publication_type=tk.StringVar(value='Все типы')
+        self._publication_icon_size=max(17,round(17*float(self.tk.call('tk','scaling'))/(96/72)))
+        self.publication_icons={kind:icon(self,{'application':'web_application','virtual_directory':'virtual_folder','folder':'folder'}[kind],self._publication_icon_size,color)
+                                for kind,color in (('application','#4c8198'),('virtual_directory','#369990'),('folder','#b7903b'))}
         definitions=(('sites','Сайты',('name','state','bindings','path')),
-                     ('publications','Публикации',('name','site','path','pool')),
+                     ('publications','Публикации',('name','site','state','url','path','pool')),
                      ('pools','Пулы IIS',('name','state','runtime','pipeline')),
                      ('bindings','Привязки IIS',('site','protocol','binding')),
                      ('certificates','Сертификаты IIS',('subject','expires','thumbprint')))
         labels={'name':'Имя','state':'Состояние','bindings':'Привязки','path':'Каталог','site':'Сайт',
                 'pool':'Пул','runtime':'.NET','pipeline':'Режим','protocol':'Протокол','binding':'IP : порт : имя',
-                'subject':'Сертификат','expires':'Действует до','thumbprint':'Отпечаток'}
+                'subject':'Сертификат','expires':'Действует до','thumbprint':'Отпечаток','url':'Ссылка'}
         for key,title,columns in definitions:
             page=tk.Frame(self.tabs,bg=colors['panel']);self.tabs.add(page,text=title)
             bar=tk.Frame(page,bg=colors['panel']);bar.pack(fill=tk.X,pady=(0,7))
             actions=({'sites':(('Создать','site_create'),('Запустить','site_start'),('Остановить','site_stop'),('Удалить','site_delete')),
-                      'publications':(('Выбрать','select_publication'),('Снять публикацию','unpublish')),
+                      'publications':(('Свойства','properties'),('Открыть ссылку','open_link'),('Открыть папку','open_directory'),
+                                      ('Выбрать','select_publication'),('В приложение IIS','publication_convert'),('Снять публикацию','unpublish')),
                       'pools':(('Создать','pool_create'),('Запустить','pool_start'),('Остановить','pool_stop'),('Перезапустить','pool_recycle'),('Удалить','pool_delete')),
                       'bindings':(('Добавить','binding_add'),('Удалить','binding_delete')),'certificates':()}[key])
             bar.columnconfigure((0,1,2),weight=1)
             for index,(title,action) in enumerate(actions):
                 b=app._button(bar,title,lambda a=action:self.action(a));b.configure(font=('Segoe UI',9),padx=6,pady=4)
                 b.grid(row=index//3,column=index%3,sticky='ew',padx=(0,4),pady=2);self.inputs.append(b)
+                if action=='publication_convert':self.convert_button=b
+            filters=tk.Frame(page,bg=colors['panel']);filters.pack(fill=tk.X,pady=(0,7));filters.columnconfigure(0,weight=1)
+            query=self.search_variables[key]=tk.StringVar()
+            entry=self.search_entries[key]=app._entry(filters,query);entry.grid(row=0,column=0,sticky='ew',padx=(0,6));entry.set_hint('Поиск по всем полям…')
+            self.inputs.append(entry);query.trace_add('write',lambda *args,k=key:self.queue_render(k))
+            if key in ('sites','publications','pools'):
+                variable=self.state_filters[key]=tk.StringVar(value='Все состояния')
+                combo=ttk.Combobox(filters,textvariable=variable,values=('Все состояния','Включено','Отключено'),state='readonly',width=16)
+                combo.grid(row=0,column=1,sticky='e');self.inputs.append(combo);self.filter_combos.append(combo)
+                variable.trace_add('write',lambda *args,k=key:self.queue_render(k))
+            if key=='publications':
+                combo=ttk.Combobox(filters,textvariable=self.publication_type,values=('Все типы','Приложение','Виртуальный каталог','Папка'),state='readonly',width=20)
+                combo.grid(row=0,column=2,sticky='e',padx=(6,0));self.inputs.append(combo);self.filter_combos.append(combo)
+                for column,title,variable in ((0,'Только выбранный сайт',self.site_scope),(1,'Только публикации 1С',self.only_1c)):
+                    check=tk.Checkbutton(filters,text=title,variable=variable,bg=colors['panel'],fg=colors['fg'],activebackground=colors['panel'],font=('Segoe UI',9),bd=0,highlightthickness=0)
+                    check.grid(row=1,column=column,sticky='w',pady=(5,0));self.inputs.append(check)
+                for variable in (self.site_scope,self.only_1c,self.publication_type):variable.trace_add('write',lambda *args:self.queue_render('publications'))
             frame=tk.Frame(page);frame.pack(fill=tk.BOTH,expand=True);frame.rowconfigure(0,weight=1);frame.columnconfigure(0,weight=1)
-            tree=self.trees[key]=ttk.Treeview(frame,columns=columns,show='headings',selectmode='browse')
-            for column in columns:tree.heading(column,text=labels[column]);tree.column(column,width=170,minwidth=70)
+            tree=self.trees[key]=ttk.Treeview(frame,columns=columns,show='tree headings' if key=='publications' else 'headings',selectmode='browse')
+            if key=='publications':tree.column('#0',width=self._publication_icon_size+10,minwidth=self._publication_icon_size+10,stretch=False,anchor='center');tree.heading('#0',text='')
+            for column in columns:
+                tree.heading(column,text=labels[column],anchor='center');tree.column(column,width={'name':170,'site':160,'state':120,'url':250,'path':240,'pool':160}.get(column,170),minwidth=85,anchor='center')
             tree.grid(row=0,column=0,sticky='nsew')
             scroll=ttk.Scrollbar(frame,command=tree.yview);scroll.grid(row=0,column=1,sticky='ns')
             horizontal=ttk.Scrollbar(frame,orient=tk.HORIZONTAL,command=tree.xview);horizontal.grid(row=1,column=0,sticky='ew')
             tree.configure(yscrollcommand=scroll.set,xscrollcommand=horizontal.set)
             tree.bind('<<TreeviewSelect>>',lambda event,k=key:self.select_row(k))
+            tree.bind('<Button-3>',lambda event,k=key:self.context_menu(event,k))
+            if key=='publications':tree.bind('<Double-1>',self.publication_double_click)
+            self.sorters[key]=TableSorter(tree,colors=colors)
+            tree.tag_configure('on',foreground=colors['success']);tree.tag_configure('off',foreground=colors['danger'])
+            tree.tag_configure('unknown',foreground=colors['muted'])
         page=tk.Frame(self.tabs,bg=colors['panel']);self.tabs.add(page,text='Конфигурации')
         bar=tk.Frame(page,bg=colors['panel']);bar.pack(fill=tk.X)
         self.config_kind=tk.StringVar(value='default.vrd')
@@ -139,16 +178,26 @@ class WebPublicationPanel(SshFields,JobPanel):
         for variable in (self.remote_host,self.remote_user,self.winrm_port,self.winrm_ssl,self.ssh_host,self.ssh_port,self.ssh_user,self.ssh_use_key,self.ssh_key):
             variable.trace_add('write',self.mode_changed)
         self.mode_changed()
+        self.bind('<Destroy>',self.closed,add='+')
 
     def secret_values(self):return [self.remote_password.get(),self.ssh_password.get(),self.sudo_password.get()]
 
+    def connection_label(self):
+        host=self.ssh_host.get() if self.system.get()=='Linux' else self.remote_host.get() if self.where.get()=='Удалённый сервер' else self._local_hostname
+        return self.web_server.get()+' · '+self.system.get()+' · '+(host or 'сервер не указан')
+
+    def workspace_activated(self):
+        super().workspace_activated();self.parameters_summary.configure(text=self.connection_label())
+
     def mode_changed(self,*args):
         if self.running:return
+        self.parameters_summary.configure(text=self.connection_label())
         linux=self.system.get()=='Linux'
         if linux and self.web_server.get()!='Apache 2.4':self.web_server.set('Apache 2.4')
         if linux and self.where.get()!='Удалённый сервер':self.where.set('Удалённый сервер')
         self.combos[1].configure(values=('Apache 2.4',) if linux else ('IIS','Apache 2.4'),state='readonly')
         self.combos[2].configure(state=tk.DISABLED if linux else 'readonly')
+        self.convert_button.configure(state=tk.NORMAL if self.web_server.get()=='IIS' else tk.DISABLED)
         self.windows_group.pack_forget();self.linux_group.pack_forget()
         if linux:self.linux_group.pack(fill=tk.X,before=self.connection_anchor)
         elif self.where.get()=='Удалённый сервер':self.windows_group.pack(fill=tk.X,before=self.connection_anchor)
@@ -163,8 +212,9 @@ class WebPublicationPanel(SshFields,JobPanel):
 
     def finish(self,text='',error=''):
         super().finish(text,error)
-        for combo in (*self.combos,self.site_widget,self.platform_widget,self.config_choice):combo.configure(state='readonly')
+        for combo in (*self.combos,self.site_widget,self.platform_widget,self.config_choice,*self.filter_combos):combo.configure(state='readonly')
         self.mode_changed()
+        for window in tuple(self.detail_windows):window.task_finished(text,error)
 
     def base_payload(self):
         site=next((row for row in self.catalog.get('sites',[]) if self.site.get()==self.site_caption(row)),{})
@@ -180,18 +230,19 @@ class WebPublicationPanel(SshFields,JobPanel):
                     password=self.remote_password.get(),port=self.winrm_port.get(),ssl=self.winrm_ssl.get())
 
     def perform(self,payload,success,history=True):
-        if self.running:return
+        if self.running:return False
         try:connection=self.connection_values()
-        except ValueError as exc:self.app._panel_error(self,str(exc));return
+        except ValueError as exc:self.app._panel_error(self,str(exc));return False
         key=self.context_key()
-        if payload['action'] in ('publish','unpublish','site_start','site_stop','site_delete','binding_add','binding_delete','pool_create','pool_start','pool_stop','pool_recycle','pool_delete') and self.context!=key:
-            self.app._panel_error(self,'Сначала подключитесь и обновите список сайтов для выбранного сервера.');return
+        if payload['action'] not in ('inspect','install','read_config','save_config','server_restart','site_create') and self.context!=key:
+            self.app._panel_error(self,'Сначала подключитесь и обновите список сайтов для выбранного сервера.');return False
         def retry():
             if self.context_key()!=key:self.app._panel_error(self,'Параметры подключения изменились. Запустите действие заново.');return
             self.perform(payload,success,history)
         with_ssh_trust(self,lambda event:operate(payload,connection,event,self.cancel_event),success,
                       retry,history=dict(operation='Веб-сервер · '+payload['action'],
                       server=connection.get('host') or 'Этот компьютер',database=payload.get('alias',''),path=payload.get('directory',''),executor=payload['os']) if history else None)
+        return True
 
     def inspect(self):
         p=self.base_payload();p['action']='inspect'
@@ -201,23 +252,74 @@ class WebPublicationPanel(SshFields,JobPanel):
     def site_caption(row):return row['name']+' · '+row.get('bindings','')
 
     def inspected(self,result):
+        old_site=next((row.get('id') for row in self.catalog.get('sites',[]) if self.site.get()==self.site_caption(row)),None)
         result['platforms']=sorted(result.get('platforms',[]),key=lambda row:version_key(row['version']))
         self.catalog=result;self.context=self.context_key()
         if self.system.get()=='Linux':self.app.saved_servers.remember_ssh(self,self.ssh_values())
         self.site_widget.configure(values=[self.site_caption(row) for row in result.get('sites',[])])
         self.platform_widget.configure(values=[row['version']+' · '+row['bin'] for row in result.get('platforms',[])])
-        if result.get('sites'):self.site.set(self.site_caption(result['sites'][0]))
+        if result.get('sites'):self.site.set(self.site_caption(next((row for row in result['sites'] if row['id']==old_site),result['sites'][0])))
         if result.get('platforms'):self.platform_choice.set(result['platforms'][-1]['version']+' · '+result['platforms'][-1]['bin'])
         self.render();self.finish('Подключено. Выберите сайт и параметры публикации.')
 
-    def render(self):
+    @staticmethod
+    def row_identity(row):
+        return tuple(str(row.get(key,'')) for key in ('id','site','name','path','binding','thumbprint'))
+
+    def decorate_publication(self,row):
+        result=dict(row)
+        site=next((site for site in self.catalog.get('sites',[]) if site['id']==row.get('site')),dict(id=row.get('site',''),name=row.get('site','')))
+        host=self.catalog.get('hostname') or (self.ssh_host.get() if self.system.get()=='Linux' else self.remote_host.get() if self.where.get()=='Удалённый сервер' else self._local_hostname)
+        if not site.get('endpoints'):
+            endpoints=[]
+            import re
+            for match in re.finditer(r'(https?)\s+(.+?):(\d+):([^;]*)',site.get('bindings','')):
+                endpoints.append(dict(protocol=match[1],ip=match[2],port=match[3],host=match[4].strip()))
+            site=dict(site,endpoints=endpoints)
+        result['urls']=publication_urls(site,row.get('name',''),host)
+        result['url']=result['urls'][0] if result['urls'] else ''
+        result['site_label']=site.get('name',row.get('site',''))
+        result['type_text']={'application':'Приложение','virtual_directory':'Виртуальный каталог','folder':'Папка'}.get(row.get('entry_type','application'),'Приложение')
+        result['state'],result['_state_tag']=state(row.get('state',site.get('state','')))
+        return result
+
+    def queue_render(self,key):
+        if key in self._render_jobs:self.after_cancel(self._render_jobs.pop(key))
+        self._render_jobs[key]=self.after(120,lambda:self._filtered_render(key))
+
+    def _filtered_render(self,key):
+        self._render_jobs.pop(key,None);self.render(key)
+
+    def render(self,only=None):
+        if self._rendering:return
+        self._rendering=True
         selected=next((r for r in self.catalog.get('sites',[]) if self.site.get()==self.site_caption(r)),{})
-        for key,tree in self.trees.items():
-            tree.delete(*tree.get_children())
-            rows=self.catalog.get(key,[])
-            if key in ('publications','bindings') and selected:rows=[r for r in rows if r.get('site')==selected['id']]
-            self.rows[key]=rows
-            for i,row in enumerate(rows):tree.insert('',tk.END,iid=str(i),values=[row.get(col,'') for col in tree['columns']])
+        try:
+            for key,tree in self.trees.items():
+                if only is not None and key!=only:continue
+                old=self.selected(key);identity=self.row_identity(old) if old else None
+                view=tree.yview();tree.delete(*tree.get_children())
+                rows=[]
+                for original in self.catalog.get(key,[]):
+                    row=self.decorate_publication(original) if key=='publications' else dict(original)
+                    if key in ('sites','pools'):row['state'],row['_state_tag']=state(row.get('state',''))
+                    if key=='bindings' and selected and self.site_scope.get() and row.get('site')!=selected['id']:continue
+                    if key=='publications':
+                        if selected and self.site_scope.get() and row.get('site')!=selected['id']:continue
+                        if self.only_1c.get() and not row.get('is_1c'):continue
+                        if self.publication_type.get()!='Все типы' and row['type_text']!=self.publication_type.get():continue
+                    if key in self.state_filters and self.state_filters[key].get()!='Все состояния' and row.get('state')!=self.state_filters[key].get():continue
+                    if not full_text_match(row,self.search_variables[key].get()):continue
+                    rows.append(row)
+                self.rows[key]=rows
+                for index,row in enumerate(rows):
+                    values=[row.get('site_label',row.get('site','')) if col=='site' else '/'+row['name'] if col=='name' and key=='publications' else row.get(col,'') for col in tree['columns']]
+                    options=dict(image=self.publication_icons.get(row.get('entry_type','application'),'')) if key=='publications' else {}
+                    tree.insert('',tk.END,iid=str(index),values=values,tags=(row.get('_state_tag',''),),**options)
+                    if identity is not None and self.row_identity(row)==identity:tree.selection_set(str(index));tree.focus(str(index))
+                self.sorters[key].apply()
+                if view:tree.yview_moveto(view[0])
+        finally:self._rendering=False
 
     def site_selected(self):
         if hasattr(self,'trees'):self.render()
@@ -228,13 +330,14 @@ class WebPublicationPanel(SshFields,JobPanel):
 
     def selected(self,key):
         selection=self.trees[key].selection()
-        return self.rows[key][int(selection[0])] if selection else None
+        rows=self.rows.get(key,[])
+        return rows[int(selection[0])] if selection and int(selection[0])<len(rows) else None
 
     def select_row(self,key):
-        if self.running:return
+        if self.running or self._rendering:return
         row=self.selected(key)
         if not row:return
-        if key=='sites':self.site.set(self.site_caption(row))
+        if key=='sites' and self.site.get()!=self.site_caption(row):self.site.set(self.site_caption(row))
         elif key=='pools':self.pool.set(row['name'])
         elif key=='certificates':self.selected_certificate=row['thumbprint'];self.state_label.configure(text='Сертификат выбран для HTTPS')
 
@@ -248,7 +351,96 @@ class WebPublicationPanel(SshFields,JobPanel):
     def select_publication(self):
         row=self.selected('publications')
         if row:
+            site=next((site for site in self.catalog.get('sites',[]) if site['id']==row['site']),None)
+            if site:self.site.set(self.site_caption(site))
             self.alias.set(row['name']);self.directory.set(row['path']);self.pool.set(row.get('pool',''));self.replace.set(True)
+            if row.get('connection'):self.connection.set(row['connection'])
+
+    def publication_payload(self,row):
+        original=next((item for item in self.catalog.get('publications',[]) if self.row_identity(item)==self.row_identity(row)),None)
+        site=next((site for site in self.catalog.get('sites',[]) if site['id']==row.get('site')),None)
+        if original is None or site is None:raise ValueError('Публикация изменилась. Обновите список и выберите её заново.')
+        payload=self.base_payload()
+        payload.update(site=site['id'],site_etag=site.get('etag',''),site_number=site.get('number'),alias=original['name'],
+                       directory=original['path'],pool=original.get('pool',''),entry_type=original.get('entry_type','application'))
+        return payload
+
+    def update_publication_info(self,row):
+        original=next((item for item in self.catalog.get('publications',[]) if self.row_identity(item)==self.row_identity(row)),None)
+        if original is not None:
+            original.update({key:value for key,value in row.items() if key not in ('services','text','urls','url','site_label','_state_tag')})
+            self.render('publications')
+
+    def open_properties(self,row=None,services=False):
+        from publication_details_ui import PublicationProperties
+        row=row or self.selected('publications')
+        if row is None:self.app._panel_error(self,'Выберите публикацию в таблице.');return
+        for window in tuple(self.detail_windows):
+            if isinstance(window,PublicationProperties) and window.context==self.context_key() and self.row_identity(window.row)==self.row_identity(row):
+                window.lift()
+                if services:window.tabs.select(1)
+                return window
+        return PublicationProperties(self,row,services)
+
+    def open_directory(self,row=None):
+        from publication_details_ui import PublicationBrowser
+        row=row or self.selected('publications')
+        if row is None:self.app._panel_error(self,'Выберите публикацию в таблице.');return
+        return PublicationBrowser(self,row)
+
+    def open_link(self,row=None):
+        row=row or self.selected('publications')
+        if row is None:self.app._panel_error(self,'Выберите публикацию в таблице.');return
+        urls=self.decorate_publication(row).get('urls',[])
+        if not urls:self.app._panel_error(self,'У сайта нет HTTP/HTTPS-привязки для построения ссылки.');return
+        webbrowser.open(urls[0])
+
+    def context_menu(self,event,key):
+        tree=self.trees[key];iid=tree.identify_row(event.y)
+        if not iid:return 'break'
+        tree.selection_set(iid);tree.focus(iid);tree.focus_set()
+        previous=getattr(self,'_context_menu',None)
+        if previous is not None:previous.destroy()
+        menu=tk.Menu(tree,tearoff=False)
+        if key=='publications':
+            row=self.selected(key)
+            for title,command in (('Свойства…',lambda:self.open_properties(row)),('Web- и HTTP-сервисы…',lambda:self.open_properties(row,True)),
+                                  ('Открыть ссылку',lambda:self.open_link(row)),('Открыть папку…',lambda:self.open_directory(row))):
+                menu.add_command(label=title,command=command,state=tk.DISABLED if self.running else tk.NORMAL)
+            menu.add_separator()
+            menu.add_command(label='Преобразовать в приложение IIS…',command=lambda:self.action('publication_convert'),
+                             state=tk.NORMAL if not self.running and self.web_server.get()=='IIS' and row.get('entry_type')!='application' and not row.get('root') else tk.DISABLED)
+            menu.add_command(label='Снять публикацию…',command=lambda:self.action('unpublish'),state=tk.DISABLED if self.running or row.get('root') else tk.NORMAL)
+        elif key in ('sites','pools'):
+            prefix='site' if key=='sites' else 'pool'
+            for title,suffix in (('Запустить','start'),('Остановить','stop')):
+                menu.add_command(label=title,command=lambda action=prefix+'_'+suffix:self.action(action),state=tk.DISABLED if self.running else tk.NORMAL)
+        menu.add_separator();menu.add_command(label='Обновить список',command=self.inspect,state=tk.DISABLED if self.running else tk.NORMAL)
+        self._context_menu=menu
+        try:menu.tk_popup(event.x_root,event.y_root)
+        finally:menu.grab_release()
+        return 'break'
+
+    def publication_double_click(self,event):
+        tree=self.trees['publications']
+        if tree.identify_region(event.x,event.y) not in ('cell','tree'):return 'break'
+        iid=tree.identify_row(event.y)
+        if iid and not self.running:
+            tree.selection_set(iid)
+            if tree.identify_column(event.x)=='#4':self.open_link()
+            else:self.open_properties()
+        return 'break'
+
+    def focus_search(self):
+        index=self.tabs.index(self.tabs.select())
+        if index<len(self.search_entries):self.search_entries[list(self.search_entries)[index]].focus_set()
+
+    def closed(self,event):
+        if event.widget is self:
+            for job in self._render_jobs.values():self.after_cancel(job)
+            self._render_jobs.clear()
+            for window in tuple(self.detail_windows):
+                if window.winfo_exists():window.destroy()
 
     def editor_changed(self,event=None):
         if self.editor.edit_modified():
@@ -271,13 +463,40 @@ class WebPublicationPanel(SshFields,JobPanel):
                                   '\n\nКонфигурация веб-сервера будет изменена.'+('\nСуществующая публикация будет обновлена.' if p['replace'] else ''),parent=self.app.root,default='no'):return
         self.perform(p,self.completed)
 
-    def completed(self,result):self.finish(result.get('text','Выполнено.')+' Обновите список сайтов при необходимости.')
+    def completed(self,result):
+        text=result.get('text','Выполнено.');self.append(text);self.finish(text)
+        self.inspect()
 
     def action(self,action):
         if self.running:return
         if action=='select_publication':self.select_publication();return
+        if action=='properties':self.open_properties();return
+        if action=='open_link':self.open_link();return
+        if action=='open_directory':self.open_directory();return
         p=self.base_payload();p['action']=action
-        if action=='unpublish':self.select_publication();p=self.base_payload();p['action']=action
+        if action in ('unpublish','publication_convert'):
+            row=self.selected('publications')
+            if row is None:self.app._panel_error(self,'Выберите публикацию в таблице.');return
+            if row.get('root'):self.app._panel_error(self,'Для корня сайта используйте управление сайтом.');return
+            try:p=self.publication_payload(row);p['action']=action
+            except ValueError as exc:self.app._panel_error(self,str(exc));return
+            if action=='publication_convert':
+                if self.web_server.get()!='IIS' or row.get('entry_type','application')=='application':
+                    self.app._panel_error(self,'Выберите обычную папку или виртуальный каталог IIS.');return
+                pools=[pool['name'] for pool in self.catalog.get('pools',[])]
+                if not pools:self.app._panel_error(self,'Создайте пул IIS и обновите список.');return
+                values=prompt(self.app,'Преобразовать в приложение IIS',(('pool','Имя существующего пула IIS',row.get('pool') or pools[0]),))
+                if not values:return
+                if values['pool'] not in pools:self.app._panel_error(self,'Выберите имя существующего пула из списка пулов IIS.');return
+                p.update(values)
+        if action in ('pool_start','pool_stop','pool_recycle','pool_delete'):
+            row=self.selected('pools')
+            if row is None:self.app._panel_error(self,'Выберите нужный пул в таблице «Пулы IIS».');return
+            p.update(pool=row['name'],site='',site_number=None,site_etag='')
+        if action in ('site_start','site_stop','site_delete'):
+            row=self.selected('sites')
+            if row is None:self.app._panel_error(self,'Выберите сайт в таблице «Сайты».');return
+            p.update(site=row['id'],site_number=row.get('number'),site_etag=row.get('etag',''))
         if action=='site_create':
             values=prompt(self.app,'Создать сайт',(('site_name','Имя сайта',''),('hostname','Доменное имя · необязательно для IIS',''),
                            ('port','Порт HTTP','80'),('site_path','Каталог на веб-сервере','/var/www/site' if p['os']=='linux' else r'C:\inetpub\site')))
@@ -298,8 +517,12 @@ class WebPublicationPanel(SshFields,JobPanel):
                     ('certificate','Сертификат · выберите во вкладке «Сертификаты IIS»',self.selected_certificate)))
             if not values:return
             p.update(values)
-        if not messagebox.askyesno('Изменение веб-сервера',action+'\n'+(p.get('site_name') or self.site.get())+'\n'+p.get('pool','')+
-                                   '\n\nПрименить изменение?',parent=self.app.root,default='no'):return
+        names={'unpublish':'Снять публикацию /'+p.get('alias',''),'publication_convert':'Преобразовать в приложение /'+p.get('alias',''),
+               'pool_stop':'Остановить пул IIS','pool_start':'Запустить пул IIS','pool_recycle':'Перезапустить пул IIS','pool_delete':'Удалить пул IIS',
+               'site_stop':'Остановить сайт','site_start':'Запустить сайт','site_delete':'Удалить сайт'}
+        notice='\n\nБаза и её файлы не удаляются. Настройки публикации будут сняты с сохранением резервной копии.' if action=='unpublish' else ''
+        if not messagebox.askyesno('Изменение веб-сервера',names.get(action,action)+'\n'+self.connection_label()+'\n'+(p.get('site_name') or p.get('site',''))+'\n'+p.get('pool','')+
+                                   notice+'\n\nПрименить изменение?',parent=self.app.root,default='no'):return
         self.perform(p,self.completed)
 
     def read_config(self):

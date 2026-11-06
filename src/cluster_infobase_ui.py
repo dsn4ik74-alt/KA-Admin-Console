@@ -1,5 +1,6 @@
 """The MMC infobase creation fields with a server/cluster picked from the console."""
 import tkinter as tk
+from search_query import matches as matches_query
 from tkinter import messagebox, ttk
 
 from add_cluster_infobase import ClusterClient, DBMS, LOCALES, SECURITY, validate_parameters
@@ -301,7 +302,7 @@ class ClusterInfobasePanel(JobPanel):
         values = {}
         query = self.base_search.get().strip().casefold()
         for index, row in enumerate(self.bases):
-            if query and query not in (row.get('name', '') + ' ' + row.get('descr', '')).casefold():
+            if not matches_query([row.get('name',''),row.get('descr','')],query):
                 continue
             if hasattr(self.app, 'hub') and not self.app.hub.visible(self, 'source', row.get('name', '')):
                 continue

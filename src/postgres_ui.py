@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import tkinter as tk
+from search_query import matches as matches_query
 from log_colors import insert_log
 from tkinter import filedialog, messagebox, ttk
 from ui_controls import geometry_widget
@@ -406,7 +407,7 @@ class PostgresPanel(JobPanel):
         for row in self.databases:
             if hasattr(self.app, 'hub') and not self.app.hub.visible(self, 'source', row['name']):
                 continue
-            if query_text in row['name'].casefold():
+            if matches_query(row['name'],query_text):
                 key = self.tree.insert('', tk.END, values=(row['name'], format_size(row.get('size_bytes')), row.get('owner', '')),
                                        tags=('odd',) if len(values) % 2 else ())
                 if row['name'] in selected:

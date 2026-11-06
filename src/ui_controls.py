@@ -95,6 +95,8 @@ ICONS={
     'down': [[(6,9),(12,15),(18,9)]],
     'shield': [[(12,2),(21,6),(20,15),(16,20),(12,23),(8,20),(4,15),(3,6),(12,2)],[(8,12),(11,15),(16,9)]],
     'link': [[(9,8),(13,4),(18,4),(21,7),(21,11),(17,15)],[(7,9),(3,13),(3,17),(6,20),(10,20),(14,16)],[(8,15),(16,7)]],
+    'web_application': [[(2,9),(16,9)],[(9,2),(6,6),(6,12),(9,16)],[(9,2),(12,6),(12,10)],[(13,11),(21,11),(21,22),(13,22),(13,11)],[(15,15),(19,15)],[(15,18),(19,18)]],
+    'virtual_folder': [[(3,7),(3,4),(10,4),(13,7),(21,7),(21,20),(3,20),(3,7)],[(3,9),(21,9)],[(9,15),(17,15)],[(14,12),(17,15),(14,18)]],
 }
 _ICON_BYTES={}
 
@@ -109,7 +111,7 @@ def icon(master,name,size=18,color='#748086'):
         result=tk.PhotoImage(master=master,data=_ICON_BYTES[key]);cache[key]=result;return result
     size=max(8,int(size));scale=3;side=size*scale;rgb=_rgb(color);paths=ICONS.get(name,ICONS['grid'])
     segments=[((a[0]*side/24,a[1]*side/24),(b[0]*side/24,b[1]*side/24)) for p in paths for a,b in zip(p,p[1:])]
-    circles={'search':[(10,10,7)],'clock':[(12,12,9)],'user':[(12,7,4)],'database':[(12,6,8,3),(12,18,8,3)]}.get(name,[])
+    circles={'search':[(10,10,7)],'clock':[(12,12,9)],'user':[(12,7,4)],'database':[(12,6,8,3),(12,18,8,3)],'web_application':[(9,9,7)]}.get(name,[])
     radius=.8*side/24
     def covered(x,y):
         for (ax,ay),(bx,by) in segments:
