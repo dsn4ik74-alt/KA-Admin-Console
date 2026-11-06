@@ -7,6 +7,8 @@ from tkinter import messagebox, ttk
 from administration_ui import JobPanel
 from configuration_install import designer_for_version, one_c_command
 from infobase_users import batch_create, operate, target_from_row, validate_change, validate_target
+from infobase_users import discover_infobases, resolve_inventory_target
+import re
 from search_query import matches
 from table_sorting import TableSorter
 from postgres_runner import OperationCancelled
@@ -20,14 +22,15 @@ class InfobaseUsersPanel(JobPanel):
         self.user, self.password = tk.StringVar(), tk.StringVar()
         self.address, self.version = tk.StringVar(), tk.StringVar()
         self.targets, self.snapshots, self.user_rows = {}, {}, {}
+        self._cache_keys, self._manual_keys, self._source_rows = set(), set(), {}
         self._credentials = None
         self._connected_signature = None
         self.field('Администратор информационных баз 1С', self.user)
         self.field('Пароль администратора ИБ', self.password, show='•')
-        self.button('Подключить выбранные базы / обновить', self.connect)
+        self.button('Получить пользователей выбранных баз', self.connect)
         self.note('Это пользователь самой информационной базы с правами администрирования пользователей. '
                   'Пароль СУБД и администратор кластера здесь не подходят. Пароли в этой вкладке не сохраняются.')
-        self.note('Базы добавьте из загруженного списка ИБ либо по адресу ниже. Для разных учётных данных '
+        self.note('Список ИБ подставляется автоматически. Кнопка «Обновить список ИБ» получает его прямо здесь. Для разных учётных данных '
                   'откройте отдельную вкладку. Требуется внешний COM-соединитель версии базы на этом компьютере Windows.')
         self.field('Адрес базы · Srvr="сервер:1541";Ref="имя";', self.address)
         self.field('Версия платформы · для ручного адреса', self.version)
@@ -37,9 +40,9 @@ class InfobaseUsersPanel(JobPanel):
         self.note('В базах БСП используются карточки пользователей и группы доступа. При иной структуре '
                   'конфигурации предлагается Конфигуратор. Роли платформы не заменяют прикладные профили прав.')
         head=tk.Frame(self.right,bg=colors['panel']);head.grid(row=0,column=0,sticky='ew',pady=(0,8))
-        self.load_button=app._button(head,'Базы из вкладки ИБ',self.load_cached)
+        self.load_button=app._button(head,'Обновить список ИБ',self.refresh_bases)
         self.load_button.pack(side=tk.LEFT)
-        self.connect_button=app._button(head,'Подключить / обновить',self.connect)
+        self.connect_button=app._button(head,'Получить пользователей',self.connect)
         self.connect_button.pack(side=tk.LEFT,padx=6)
         self.edit_button=app._button(head,'Изменить…',self.edit_selected);self.edit_button.pack(side=tk.LEFT)
         self.delete_button=app._button(head,'Удалить…',self.delete_selected);self.delete_button.pack(side=tk.LEFT,padx=6)
@@ -87,14 +90,64 @@ class InfobaseUsersPanel(JobPanel):
 
     def select_all(self,tree):tree.selection_set(tree.get_children());return 'break'
 
+    def workspace_activated(self):
+        self.load_cached(quiet=True)
+        self._parameters_seen=True
+        super().workspace_activated()
+
+    def cluster_connection(self):
+        ports=self.app._settings.get('ras_ports',{})
+        return dict(user=self.app.user_var.get(), password=self.app.pwd_var.get(),
+            local=self.app.local_ras_var.get(), ports=dict(ports) if isinstance(ports,dict) else {})
+
+    def finish(self,text='',error=''):
+        super().finish(text,error)
+        if getattr(self,'_inventory_sync_pending',False):
+            self._inventory_sync_pending=False;self.load_cached(quiet=True)
+
+    def refresh_bases(self):
+        if self.running:return
+        if self.app.search_running:
+            self.load_cached(quiet=True)
+            self.app._panel_status(self,'Список ИБ уже загружается. Он появится здесь после завершения поиска.')
+            return
+        items=[dict(row) for row in self.app.all_items];versions=dict(self.app.rac_map)
+        auth=self.cluster_connection();discover=discover_infobases
+        if not self.start():return
+        def operation(event):return discover(items,versions,event=event,**auth)
+        def success(result):
+            errors=result['errors'];found=result['bases']
+            if not self.app.all_items:self.app.all_items=result['items']
+            self.app.rac_map.update(result['versions'])
+            for error in errors:self.append(error,'warning')
+            self.finish('Получено ИБ: '+str(len(found))+(' · предупреждений: '+str(len(errors)) if errors else ''))
+            if found or not errors:self.app._accept_infobase_inventory(found,errors)
+            elif errors:self.app._panel_error(self,'Не удалось получить список ИБ. Предыдущий список сохранён.\n'+errors[0])
+            self.tabs.select(0);self.reveal_table()
+        self.work(operation,success)
+
     def load_cached(self,quiet=False):
         if self.running:return
-        added=0
+        added=0;current=set();sources={}
         for row in getattr(self.app,'_all_bases',[]):
-            try:target=validate_target(target_from_row(row))
-            except ValueError:continue
-            key=target['address'].casefold()
-            if key not in self.targets:self.targets[key]=target;added+=1
+            source=dict(row)
+            if not source.get('cluster_version') and not source.get('version'):
+                server=next((item for item in self.app.all_items if str(item.get('server','')).casefold()==str(row.get('server','')).casefold()
+                             and str(item.get('port',''))==str(row.get('port',''))),{})
+                source['cluster_version']=server.get('version','')
+            try:target=target_from_row(source)
+            except ValueError:
+                target=dict(name=source.get('base',''),address='',version=source.get('cluster_version',''))
+            key=target['address'].casefold() or 'pending:'+':'.join(str(source.get(k,'')) for k in ('server','port','cluster_id','infobase_id','base'))
+            if self._source_rows.get(key)==source and key in self.targets:
+                target={**self.targets[key],**{k:v for k,v in target.items() if v}}
+            current.add(key);sources[key]=source
+            if key not in self.targets:added+=1
+            if key in self.targets and self.targets[key]!=target:self.snapshots.pop(key,None)
+            self.targets[key]=target
+        for key in self._cache_keys-current-self._manual_keys:
+            self.targets.pop(key,None);self.snapshots.pop(key,None)
+        self._cache_keys=current;self._source_rows=sources
         self.render()
         if not quiet:
             self.tabs.select(0)
@@ -105,7 +158,7 @@ class InfobaseUsersPanel(JobPanel):
         if self.running:return
         try:target=validate_target(dict(address=self.address.get(),version=self.version.get()))
         except ValueError as exc:self.app._panel_error(self,str(exc));return
-        key=target['address'].casefold();self.targets[key]=target
+        key=target['address'].casefold();self.targets[key]=target;self._manual_keys.add(key)
         self.render();self.tabs.select(0);self.base_tree.selection_set(key);self.base_tree.see(key)
         self.app._clear_panel_error(self)
 
@@ -121,14 +174,19 @@ class InfobaseUsersPanel(JobPanel):
             self.tabs.select(0);self.app._panel_error(self,'Выделите одну или несколько баз. Ctrl / Shift — выбрать несколько.',self.base_tree);return
         credentials=dict(user=self.user.get(),password=self.password.get());signature=self.signature()
         targets=[(key,dict(self.targets[key])) for key in keys];versions=dict(self.app.rac_map)
+        sources=deepcopy(self._source_rows);auth=self.cluster_connection();resolver=resolve_inventory_target
         runner=operate
         if not self.start():return
         def operation(event):
-            output={}
+            output={};resolved={}
             for key,target in targets:
                 if self.cancel_event.is_set():break
                 event(dict(kind='stage',text='Подключение: '+target['name']))
                 try:
+                    if not target.get('address') or not re.fullmatch(r'8\.[35]\.\d+\.\d+',target.get('version','')):
+                        if key not in sources:raise ValueError('Не определена версия платформы. Обновите список ИБ.')
+                        target=resolver(sources[key],versions,event=event,**auth)
+                    resolved[key]=target
                     output[key]=runner(target,credentials,'inspect',event,versions=versions)
                     event(dict(kind='message',text=target['name']+': '+output[key].get('configuration','')+' · '+
                         output[key].get('version','')+'\n'+output[key]['reason']))
@@ -137,11 +195,13 @@ class InfobaseUsersPanel(JobPanel):
                     text=str(exc)
                     if credentials['password']:text=text.replace(credentials['password'],'[скрыто]')
                     output[key]={'error':text};event(dict(kind='error',text=target['name']+': '+text))
-            return output
-        def success(output):
+            return output,resolved
+        def success(result):
+            output,resolved=result
             # Old connections must not survive a change of credentials.
             if self._connected_signature != signature:self.snapshots.clear()
             self._credentials=credentials;self._connected_signature=signature
+            self.targets.update(resolved)
             self.snapshots.update(output);self.render()
             failed=sum('error' in value for value in output.values())
             self.finish('Подключено баз: '+str(len(output)-failed),str(failed)+' баз не подключены. Подробности в журнале.' if failed else '')

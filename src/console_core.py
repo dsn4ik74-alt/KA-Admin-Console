@@ -351,6 +351,7 @@ def collect_bases(items, versions, user, password, notify=lambda *args: None,
                               "base": base.get("name", "?"),
                               "cluster": f"{info['cluster_name']} ({info['cluster_id'][:8]}...)",
                               "cluster_id": info["cluster_id"], "infobase_id": base["infobase"],
+                              'cluster_version': info.get('version', ''),
                               'cluster_host': info['cluster_host'], 'cluster_port': info['cluster_port']})
     found.sort(key=lambda row: (row["server"].casefold(), row["port"], row["base"].casefold()))
     return found, errors
@@ -431,6 +432,7 @@ def collect_bases_local(items, versions, user, password, manager, notify, stop, 
                                                 "base": base.get("name", "?"),
                                                 "cluster": f"{cluster.get('name', '')} ({cluster_id[:8]}...)",
                                                 "cluster_id": cluster_id, "infobase_id": base["infobase"],
+                                                'cluster_version': version,
                                                 'cluster_host': cluster.get('host', ''), 'cluster_port': cluster.get('port', '')})
                     except Exception as exc:
                         if not cancelled():

@@ -33,6 +33,16 @@ function XmlFlag($node,[string]$name,[bool]$default) {
     if ($null -eq $node -or -not $node.HasAttribute($name)) {return $default}
     return $node.GetAttribute($name) -in @('true','1')
 }
+function FormattedXml($xml) {
+    $settings=New-Object Xml.XmlWriterSettings
+    $settings.Encoding=New-Object Text.UTF8Encoding($false)
+    $settings.Indent=$true;$settings.IndentChars='    ';$settings.NewLineOnAttributes=$true
+    $settings.NewLineChars="`n";$settings.NewLineHandling=[Xml.NewLineHandling]::None
+    $memory=New-Object IO.MemoryStream
+    $writer=[Xml.XmlWriter]::Create($memory,$settings)
+    try {$xml.Save($writer);$writer.Flush();return [Text.Encoding]::UTF8.GetString($memory.ToArray())+"`n"}
+    finally {$writer.Dispose();$memory.Dispose()}
+}
 function VrdDetails([string]$path) {
     if ((Get-Item -LiteralPath $path).Length -gt 2097152) {throw 'Конфигурация превышает 2 МБ'}
     $raw=[IO.File]::ReadAllBytes($path)
@@ -229,7 +239,7 @@ function ServiceUpdate($row) {
     BackupFile $vrd
     $previous=ReadFile $vrd
     try {
-        WriteFile $vrd $xml.OuterXml
+        WriteFile $vrd (FormattedXml $xml)
         [void](VrdDetails $vrd)
         if ($p.server -eq 'apache') {ApacheTest | ForEach-Object {$_};ApacheReload | ForEach-Object {$_}}
     } catch {WriteFile $vrd $previous;if ($p.server -eq 'apache') {try {ApacheReload | ForEach-Object {$_}} catch {}};throw}

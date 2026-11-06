@@ -57,7 +57,7 @@ from search_query import matches as matches_query
 from infobase_users_ui import InfobaseUsersPanel
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "21.1"
+APP_VERSION = "21.2"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -1336,7 +1336,7 @@ class App:
             if self.mode=='web_publication':panel.inspect();return
             if self.mode=='file_transfer':panel.list_source();return
             if self.mode=='ring_license':panel.run_check('list');return
-            if self.mode=='infobase_users':panel.connect();return
+            if self.mode=='infobase_users':panel.refresh_bases();return
             if (panel, 'source') in self.hub.refresh_buttons:
                 role = 'source'
                 focused = self.root.focus_get()
@@ -1401,14 +1401,21 @@ class App:
 
     def _finalize_rac_search(self, found, errors):
         self.search_running = False
-        self._all_bases = found
+        self._accept_infobase_inventory(found,errors)
         self._set_busy()
-        self._set_errors(errors)
-        self._render()
         if self.mode in TABLES:
             self.progress.configure(value=0)
             self.progress_pct.configure(text="")
             self._status(f"Загружено баз: {len(found)}" + (f" · Ошибок: {len(errors)} — см. подробности" if errors else ""))
+
+    def _accept_infobase_inventory(self,found,errors):
+        self._all_bases=list(found)
+        self._set_errors(errors)
+        for panel in set(self._pages.values()):
+            if isinstance(panel,InfobaseUsersPanel):
+                if panel.running:panel._inventory_sync_pending=True
+                else:panel.load_cached(quiet=True)
+        self._render()
 
     def _set_errors(self, errors):
         self._errors = errors

@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 
 from windows_remote import run_windows
 from ssh_jobs import run_script
+from publication_config import format_xml
 
 NS = 'http://v8.1c.ru/8.2/virtual-resource-system'
 ET.register_namespace('', NS)
@@ -24,7 +25,7 @@ def descriptor(alias, connection, web=True, services=True, http=True, odata=Fals
     ET.SubElement(root, '{'+NS+'}httpServices', dict(publishByDefault=str(bool(http)).lower()))
     ET.SubElement(root, '{'+NS+'}standardOData', dict(enable=str(bool(odata)).lower()))
     ET.indent(root, space='  ')
-    return '<?xml version="1.0" encoding="UTF-8"?>\n'+ET.tostring(root, encoding='unicode')+'\n'
+    return format_xml(ET.tostring(root, encoding='unicode'))
 
 
 def validate(values):

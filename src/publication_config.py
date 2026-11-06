@@ -9,6 +9,39 @@ NS='http://v8.1c.ru/8.2/virtual-resource-system'
 ET.register_namespace('',NS)
 
 
+def format_xml(text):
+    """Readable XML with aligned attributes, retaining namespaces and text nodes."""
+    from xml.dom import Node, minidom
+    from xml.sax.saxutils import escape
+    raw=text.encode('utf-8') if isinstance(text,str) else text
+    markup=raw.replace(b'\x00',b'').upper()
+    if len(raw)>2*1024**2 or b'<!DOCTYPE' in markup or b'<!ENTITY' in markup:
+        raise ValueError('DTD, сущности и XML больше 2 МБ не поддерживаются')
+    try:document=minidom.parseString(text)
+    except Exception as exc:raise ValueError('Некорректный XML: '+str(exc)) from None
+    def render(node,level=0,preserve=False):
+        if level>256:raise ValueError('Слишком большая вложенность XML')
+        pad='    '*level
+        if node.nodeType!=Node.ELEMENT_NODE:return pad+node.toxml()
+        preserve=preserve or node.getAttribute('xml:space')=='preserve'
+        if preserve or any(child.nodeType==Node.CDATA_SECTION_NODE or
+            child.nodeType==Node.TEXT_NODE and child.data.strip() for child in node.childNodes):
+            return pad+node.toxml()
+        opening=pad+'<'+node.tagName;align=' '*(len(pad)+len(node.tagName)+2)
+        for index in range(node.attributes.length):
+            attr=node.attributes.item(index)
+            value=escape(attr.value,{'"':'&quot;','\t':'&#9;','\r':'&#13;','\n':'&#10;'})
+            opening+=(' ' if index==0 else '\n'+align)+attr.name+'="'+value+'"'
+        children=[child for child in node.childNodes if child.nodeType!=Node.TEXT_NODE or child.data.strip()]
+        if not children:return opening+'/>'
+        return opening+'>\n'+'\n'.join(render(child,level+1,preserve) for child in children)+'\n'+pad+'</'+node.tagName+'>'
+    try:
+        declaration='<?xml version="1.0" encoding="UTF-8"'
+        if document.standalone is not None:declaration+=' standalone="'+('yes' if document.standalone else 'no')+'"'
+        return declaration+'?>\n'+'\n'.join(render(node) for node in document.childNodes)+'\n'
+    finally:document.unlink()
+
+
 def parse(raw):
     if isinstance(raw,str):raw=raw.encode('utf-8')
     markup=raw.replace(b'\x00',b'').upper()
@@ -77,7 +110,7 @@ def update_services(raw,changes):
         if attr is None:
             node=parent.findall('{'+NS+'}'+('point' if kind=='ws' else 'service'))[int(index[0])];attr='enable'
         node.set(attr,str(enabled).lower())
-    return b'<?xml version="1.0" encoding="UTF-8"?>\n'+ET.tostring(root,encoding='utf-8')+b'\n'
+    return format_xml(ET.tostring(root,encoding='unicode')).encode('utf-8')
 
 
 def state(value):

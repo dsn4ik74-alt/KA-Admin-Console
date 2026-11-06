@@ -9,6 +9,8 @@ from configuration_install import _versioned_client
 from powershell_jobs import run_script
 from postgres_runner import OperationCancelled
 from publication_config import connection_info
+from console_core import collect_bases, discover_local_lst, find_all_rac, read_lst
+from local_ras import LocalRasManager
 
 
 def target_from_row(row):
@@ -27,6 +29,47 @@ def quoted(value):
     value = str(value)
     if any(c in value for c in '\x00\r\n'):raise ValueError('В параметре соединения есть недопустимый символ.')
     return '"' + value.replace('"', '""') + '"'
+
+
+def discover_infobases(items, versions, user, password, local, ports, event):
+    """Use the same inventory and current-user sources as the ИБ workspace."""
+    cancel = getattr(event, '__dict__', {}).get('cancel_event') or threading.Event()
+    items, versions = [dict(item) for item in items], dict(versions)
+    errors = []
+    if not items:
+        report = discover_local_lst()
+        errors.extend(report.errors)
+        for path in report.current_paths:
+            try:
+                servers = read_lst(path)
+                items.extend(dict(record, server=server) for server, records in servers.items() for record in records)
+            except (OSError, UnicodeError) as exc:errors.append(str(path) + ': ' + str(exc))
+    if cancel.is_set():raise OperationCancelled('Получение списка ИБ прервано.')
+    if not items:raise ValueError('В списках appsrvrs.lst текущего пользователя не найдены серверы 1С. Добавьте сервер в консоль 1С.')
+    if not versions:versions = find_all_rac()
+    if not local and not versions:raise ValueError('Не найден rac.exe. Установите компоненты администрирования 1С.')
+    def notify(stage, done, total):
+        event(dict(kind='stage', text=stage + (' · ' + str(done) + ' / ' + str(total) if total else '')))
+    manager = LocalRasManager(cancel) if local else None
+    try:
+        found, failures = collect_bases(items, versions, user, password, notify, cancel,
+                                        ras_ports=ports, local_ras=manager)
+    finally:
+        if manager:manager.close()
+    if cancel.is_set():raise OperationCancelled('Получение списка ИБ прервано. Предыдущий список сохранён.')
+    return dict(bases=found, errors=errors + failures, items=items, versions=versions)
+
+
+def resolve_inventory_target(row, versions, user, password, local, ports, event):
+    from add_cluster_infobase import ClusterClient
+    from infobase_address import infobase_address
+    cancel = getattr(event, '__dict__', {}).get('cancel_event') or threading.Event()
+    agent = dict(server=row['server'], port=row['port'], version=row.get('cluster_version') or row.get('version', ''))
+    client = ClusterClient(agent, versions, user, password, local,
+        ports.get(str(agent['server']) + ':' + str(agent['port']), 1545), event, cancel)
+    context = client.launch_context(row['cluster_id'], row['infobase_id'], row['base'])
+    return validate_target(dict(name=row['base'], version=context['cluster']['platform_version'],
+        address=infobase_address(context['cluster'], context['base']['name'], agent['server'])))
 
 
 def validate_target(target):

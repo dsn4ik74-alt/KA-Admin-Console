@@ -163,7 +163,10 @@ class WebPublicationPanel(SshFields,JobPanel):
             button=app._button(bar,title,command);button.configure(font=('Segoe UI',9),padx=6)
             button.grid(row=0,column=column,padx=(4,0));self.inputs.append(button)
         generate=app._button(bar,'Создать VRD из формы',self.generate_vrd)
-        generate.grid(row=1,column=0,columnspan=3,sticky='ew',pady=(5,0));self.inputs.append(generate)
+        generate.grid(row=1,column=0,columnspan=2,sticky='ew',pady=(5,0));self.inputs.append(generate)
+        self.format_button=app._button(bar,'Форматировать XML',self.format_editor)
+        self.format_button.configure(font=('Segoe UI',9),padx=6)
+        self.format_button.grid(row=1,column=2,sticky='ew',padx=(4,0),pady=(5,0));self.inputs.append(self.format_button)
         self.config_path=tk.StringVar()
         path=app._entry(page,self.config_path);path.pack(fill=tk.X,pady=6);self.inputs.append(path)
         self.editor=tk.Text(page,wrap=tk.NONE,font=('Consolas',10),undo=True,bg=colors['panel'],fg=colors['fg'])
@@ -537,9 +540,25 @@ class WebPublicationPanel(SshFields,JobPanel):
         p['config_path']=self.config_path.get().strip() or default
         def done(result):
             self.loaded_config=dict(kind=kind,etag=result['etag'],path=result['path'],context=self.connection_values())
+            self.editor.configure(state=tk.NORMAL)
             self.config_path.set(result['path']);self.editor.delete('1.0',tk.END);self.editor.insert('1.0',result['text'])
+            if kind in ('vrd','web','iis'):self.format_editor(quiet=True)
+            self.editor.edit_reset()
             self._editor_vrd=kind=='vrd';self.finish('Файл прочитан. Изменения применяются кнопкой «Сохранить».')
         self.perform(p,done,False)
+
+    def format_editor(self,quiet=False):
+        from publication_config import format_xml
+        if self.running and not quiet:return
+        try:formatted=format_xml(self.editor.get('1.0','end-1c'))
+        except ValueError as exc:
+            if not quiet:self.app._panel_error(self,str(exc))
+            else:self.append('Форматирование XML недоступно: '+str(exc),'warning')
+            return False
+        if self.editor.get('1.0','end-1c')!=formatted:
+            self.editor.edit_separator();self.editor.delete('1.0',tk.END);self.editor.insert('1.0',formatted);self.editor.edit_separator()
+            self.editor.yview_moveto(0);self.editor.xview_moveto(0)
+        return True
 
     def save_config(self):
         if not self.loaded_config:self.app._panel_error(self,'Сначала прочитайте файл с сервера');return

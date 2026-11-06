@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.1-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.1)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.1)
+[![Версия](https://img.shields.io/badge/версия-21.2-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.2)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.2)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.1-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.1/KA-Admin-Console-21.1.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.2-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.2/KA-Admin-Console-21.2.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,16 +38,13 @@
 
 ## Что изменилось
 
-**21.1**
+**21.2**
 
-- Исправлено закрытие карточек пользователей и свойств публикаций вместе с их рабочей вкладкой.
+- Вкладка создания пользователей автоматически показывает общий список ИБ и умеет обновлять его самостоятельно. Исправлена потеря баз без версии платформы.
+- XML публикаций отображается с отступами и переносами атрибутов. Добавлена кнопка форматирования; изменения WS/HS сохраняются в читаемом виде.
+- Сохранены управление пользователями и правами, публикациями IIS/Apache, поиск с масками и список служб.
 
-- Управление пользователями 1С: выбор одной или нескольких баз, создание, изменение, удаление, группы доступа БСП и роли платформы. Для неподдерживаемых конфигураций — переход в Конфигуратор.
-- Публикации IIS/Apache: поиск, ссылки с именем сервера, свойства базы и платформы, настройки WS/HS, просмотр каталогов и снятие публикации. Для IIS — преобразование в приложение и исправленное управление пулами.
-- Выбор службы из списка при переименовании и удалении. Переход из ИБ в родную консоль 1С (MMC).
-- Поиск с `*`: `bp*` — начинается с bp, `*bp*` — содержит bp. Колесо мыши больше не меняет значения выпадающих списков.
-
-**Переход с 20.33.x:** один раз скачайте ZIP и замените EXE. Версия 21.1 поддерживает новый короткий формат номеров для последующих обновлений.
+**Переход с 20.33.x:** один раз скачайте ZIP и замените EXE. Для 21.x доступно обновление через приложение.
 
 [Предыдущие версии и полный список изменений](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
