@@ -57,7 +57,7 @@ from search_query import matches as matches_query
 from infobase_users_ui import InfobaseUsersPanel
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "21.3"
+APP_VERSION = "21.4"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"

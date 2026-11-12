@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import subprocess
 import tempfile
 import time
@@ -14,6 +15,8 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+
+import truststore
 
 REPO = 'dsn4ik74-alt/KA-Admin-Console'
 API = 'https://api.github.com/repos/' + REPO + '/releases/latest'
@@ -74,7 +77,7 @@ def parse_release(data, current):
 def latest(current):
     request = urllib.request.Request(API, headers={'Accept':'application/vnd.github+json', 'User-Agent':'KA-Admin-Console'})
     try:
-        with urllib.request.urlopen(request, timeout=25) as response:
+        with urllib.request.urlopen(request, timeout=25, context=tls_context()) as response:
             raw = response.read(1024*1024+1)
         if len(raw) > 1024*1024:
             raise ValueError('Ответ GitHub превышает допустимый размер')
@@ -83,6 +86,28 @@ def latest(current):
         if exc.code in (403, 429):
             raise ValueError('GitHub временно ограничил запросы. Повторите проверку позже.') from exc
         raise ValueError('GitHub: ошибка HTTP ' + str(exc.code)) from exc
+    except (urllib.error.URLError, ssl.SSLError) as exc:
+        raise connection_error(exc) from exc
+
+
+def tls_context():
+    """Use OS certificate-chain validation for this updater only."""
+    context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.set_alpn_protocols(['http/1.1'])
+    return context
+
+
+def connection_error(error):
+    reason = error.reason if isinstance(error, urllib.error.URLError) else error
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return ValueError('Не удалось проверить сертификат HTTPS GitHub. '
+                          'Проверьте доверенные сертификаты Windows. Если соединение '
+                          'проверяет корпоративный прокси или антивирус, его корневой '
+                          'сертификат должен быть доверенным в Windows.\nПодробности: ' + str(reason))
+    return ValueError('Не удалось подключиться к GitHub: ' + str(reason))
 
 
 class ReleaseRedirect(urllib.request.HTTPRedirectHandler):
@@ -100,7 +125,9 @@ def download(asset, destination, progress, cancel=None):
     total = 0; checksum = hashlib.sha256(); last = 0
     try:
         request = urllib.request.Request(asset['url'], headers={'User-Agent':'KA-Admin-Console'})
-        with urllib.request.build_opener(ReleaseRedirect()).open(request, timeout=30) as response, destination.open('xb') as output:
+        opener = urllib.request.build_opener(
+            ReleaseRedirect(), urllib.request.HTTPSHandler(context=tls_context()))
+        with opener.open(request, timeout=30) as response, destination.open('xb') as output:
             while True:
                 checked(cancel)
                 data = response.read(BLOCK)
@@ -114,6 +141,9 @@ def download(asset, destination, progress, cancel=None):
         if total != asset['size'] or checksum.hexdigest() != asset['sha256']:
             raise ValueError('Контрольная сумма скачанного обновления не совпала')
         progress(total,total)
+    except (urllib.error.URLError, ssl.SSLError) as exc:
+        destination.unlink(missing_ok=True)
+        raise connection_error(exc) from exc
     except BaseException:
         destination.unlink(missing_ok=True)
         raise

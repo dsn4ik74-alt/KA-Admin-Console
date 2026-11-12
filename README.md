@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.3-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.3)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.3)
+[![Версия](https://img.shields.io/badge/версия-21.4-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.4)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.4)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.3-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.3/KA-Admin-Console-21.3.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.4-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.4/KA-Admin-Console-21.4.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,13 +38,14 @@
 
 ## Что изменилось
 
-**21.3**
+**21.4**
 
-- Исправлен COM-перебор коллекций при получении пользователей и ролей 1С: используются стандартный перечислитель COM и поддержка возвращаемых массивов.
-- В сообщении об ошибке показываются этап, имя метода или свойства и исходный HRESULT. Значения аргументов не включаются в диагностику.
-- Сохранены автоматический список ИБ, обновление из вкладки пользователей и форматирование XML публикаций.
+- Обновлятор использует системное хранилище сертификатов Windows при проверке версии и скачивании файлов с GitHub.
+- Сохранены проверки сертификата, имени сервера и контрольной суммы обновления. Ошибки соединения показываются с понятным пояснением.
 
 **Переход с 20.33.x:** один раз скачайте ZIP и замените EXE. Для 21.x доступно обновление через приложение.
+
+**Если проверка обновлений завершается ошибкой SSL:** скачайте ZIP 21.4 через браузер и замените EXE вручную. Если корневой сертификат корпоративного прокси не доверен самой Windows, потребуется настроить доверие к нему в Windows.
 
 [Предыдущие версии и полный список изменений](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 

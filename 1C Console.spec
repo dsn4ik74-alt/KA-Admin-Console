@@ -2,6 +2,7 @@
 
 
 from pathlib import Path
+from PyInstaller.utils.hooks import copy_metadata
 
 pg_root = Path(SPECPATH) / 'vendor' / 'postgresql'
 pg_data, pg_binaries = [], []
@@ -42,7 +43,7 @@ a = Analysis(
            ('src/publication_config.py','.'),
            ('src/search_query.py','.'),
            ('src/infobase_users_windows.ps1','.'),
-           ('vendor/efd-format/LICENSE.txt','vendor/efd-format')] + pg_data,
+           ('vendor/efd-format/LICENSE.txt','vendor/efd-format')] + pg_data + copy_metadata('truststore'),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
