@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.4-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.4)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.4)
+[![Версия](https://img.shields.io/badge/версия-21.5-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.5)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.5)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.4-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.4/KA-Admin-Console-21.4.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.5-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.5/KA-Admin-Console-21.5.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,15 +38,15 @@
 
 ## Что изменилось
 
-**21.4**
+**21.5**
 
-- Обновлятор использует системное хранилище сертификатов Windows при проверке версии и скачивании файлов с GitHub.
-- Сохранены проверки сертификата, имени сервера и контрольной суммы обновления. Ошибки соединения показываются с понятным пояснением.
-- В планировщике добавлен календарь выбора даты; интервал показывается только для запуска через интервал. Работающий фоновый исполнитель отмечен зелёным.
+- Исправлен перезапуск после обновления: новая копия запускается с независимым окружением PyInstaller после завершения старой.
+- Замена EXE сохраняет исходные права доступа. Резервная копия удаляется после подтверждения запуска интерфейса; при раннем аварийном выходе выполняется откат.
+- Сохранены исправления SSL, календарь планировщика и зелёный индикатор фонового исполнителя.
 
 **Переход с 20.33.x:** один раз скачайте ZIP и замените EXE. Для 21.x доступно обновление через приложение.
 
-**Если проверка обновлений завершается ошибкой SSL:** скачайте ZIP 21.4 через браузер и замените EXE вручную. Если корневой сертификат корпоративного прокси не доверен самой Windows, потребуется настроить доверие к нему в Windows.
+**Переход с 21.4 и ниже:** закройте все экземпляры КА, скачайте ZIP 21.5 через браузер и распакуйте EXE в новую папку. Это нужно, чтобы заменить старый обработчик обновления, который мог не запускать приложение после замены. Настройки хранятся отдельно.
 
 [Предыдущие версии и полный список изменений](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 

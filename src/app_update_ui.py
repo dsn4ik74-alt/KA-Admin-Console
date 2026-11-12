@@ -117,7 +117,7 @@ class UpdateWindow(tk.Toplevel):
             heartbeat,name=store.health()
             if name and time.time()-heartbeat.get('at',0)<20:raise ValueError('Планировщик начал задание. Обновите приложение после его завершения.')
             resume=time.time()-heartbeat.get('at',0)<20
-            store.meta('update_until',time.time()+120);store.meta('stop',True)
+            store.meta('update_until',time.time()+600);store.meta('stop',True)
         try:updates.launch_helper(self.stage,sys.executable,resume_scheduler=resume)
         except Exception:
             if store.path.is_file():store.meta('update_until',0);store.meta('stop',False)

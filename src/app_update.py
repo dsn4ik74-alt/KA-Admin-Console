@@ -8,6 +8,7 @@ import re
 import shutil
 import ssl
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
@@ -289,11 +290,43 @@ def launch_helper(stage,executable,resume_scheduler=False):
         raise ValueError('Неверный путь обновляемого приложения')
     if shutil.disk_usage(target.parent).free<Path(stage['executable']).stat().st_size+20*1024**2:
         raise ValueError('Недостаточно места в папке приложения')
-    payload=dict(stage,target=str(target),pid=os.getpid(),source_sha256=digest(target),resume_scheduler=resume_scheduler)
+    payload=dict(stage,target=str(target),pid=os.getpid(),
+                 parent_pid=os.getppid() if getattr(sys,'frozen',False) else None,
+                 source_sha256=digest(target),resume_scheduler=resume_scheduler,
+                 startup_token=uuid.uuid4().hex)
     config.write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
     script=folder/'apply.ps1'
     shutil.copyfile(Path(__file__).with_name('app_update_windows.ps1'),script)
     system=Path(os.environ.get('SystemRoot',r'C:\Windows'))/'System32'/'WindowsPowerShell'/'v1.0'/'powershell.exe'
+    environment = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT='1')
     return subprocess.Popen([str(system),'-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
                             '-WindowStyle','Hidden','-File',str(script),'-Config',str(config)],
-                            creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),close_fds=True)
+                            creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),close_fds=True,
+                            env=environment)
+
+
+def acknowledge_startup(current):
+    """Confirm a replacement only after the new application's UI reaches idle."""
+    if '--ka-updated' not in sys.argv or '--ka-update-config' not in sys.argv:
+        return False
+    position = sys.argv.index('--ka-update-config')
+    if position+1 >= len(sys.argv):
+        raise ValueError('Не указан файл подтверждения обновления')
+    config = Path(sys.argv[position+1]).resolve()
+    folder = config.parent
+    if (config.name != 'update.json' or
+            not re.fullmatch(r'ka-update-[a-f0-9]{32}-[a-zA-Z0-9_-]+', folder.name) or
+            (folder/'ka-update.marker').read_text(encoding='ascii') != 'KA_UPDATE_1'):
+        raise ValueError('Неверная папка подтверждения обновления')
+    payload = json.loads(config.read_text(encoding='utf-8'))
+    if (Path(payload['folder']).resolve() != folder or
+            Path(payload['target']).resolve() != Path(sys.executable).resolve() or
+            payload['version'] != current or
+            not re.fullmatch(r'[a-f0-9]{32}', payload.get('startup_token', ''))):
+        raise ValueError('Параметры подтверждения обновления не совпадают с запущенной версией')
+    ready = folder/'ready.json'
+    temporary = folder/'ready.tmp'
+    temporary.write_text(json.dumps(dict(token=payload['startup_token'], version=current,
+        target=str(Path(sys.executable).resolve()), pid=os.getpid())), encoding='utf-8')
+    temporary.replace(ready)
+    return True

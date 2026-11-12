@@ -57,7 +57,7 @@ from search_query import matches as matches_query
 from infobase_users_ui import InfobaseUsersPanel
 
 APP_NAME = "Консоль администратора КА"
-APP_VERSION = "21.4"
+APP_VERSION = "21.5"
 ACTIVITY_FILE = Path.home() / '.1c_console_activity.json'
 SETTINGS_FILE = Path.home() / ".1c_mmc_settings.json"
 CACHE_FILE = Path.home() / ".1c_mmc_cache.dat"
@@ -203,6 +203,7 @@ class App:
         self._switch_mode('home')
         self._discover(startup=True)
         if '--ka-updated' in sys.argv:
+            self.root.after_idle(self._acknowledge_update)
             self.root.after(1000, self._resume_after_update)
 
     def _activity_destroyed(self, event):
@@ -1531,6 +1532,12 @@ class App:
                 self._post(self._status,'Приложение обновлено до '+APP_VERSION)
             except Exception as exc:self._post(self._status,'Приложение обновлено. Проверьте фоновый планировщик: '+str(exc))
         threading.Thread(target=resume,daemon=True).start()
+
+    def _acknowledge_update(self):
+        from app_update import acknowledge_startup
+        try:acknowledge_startup(APP_VERSION)
+        except (OSError, ValueError, KeyError) as exc:
+            self._status('Не удалось подтвердить запуск после обновления: '+str(exc))
 
     def _on_close(self, before_exit=None):
         updater=getattr(self,'_updater',None)
