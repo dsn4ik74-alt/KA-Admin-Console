@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 
 from log_colors import configure_log, insert_log
+from calendar_picker import CalendarPicker
 from operation_progress import duration
 from scheduler_actions import LABELS, capture, destructive, describe, validate_step
 from scheduler_store import SchedulerStore
@@ -84,6 +85,7 @@ class SchedulerPanel(tk.Frame):
         self.catch_up = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value='Фоновый исполнитель ещё не настроен')
         self._built = False
+        self.kind.trace_add('write', lambda *args: self.update_schedule_fields())
         for var in (self.name, self.kind, self.date, self.clock, self.interval, self.enabled, self.catch_up, *self.days):
             var.trace_add('write', lambda *args: self.mark_dirty())
         self.bind('<Destroy>', self.destroyed, add='+')
@@ -95,7 +97,8 @@ class SchedulerPanel(tk.Frame):
         app._label(bar, 'Планировщик', 14, bold=True).pack(side=tk.LEFT)
         app._button(bar, 'Фоновый запуск…', self.background_dialog).pack(side=tk.RIGHT)
         app._label(bar, '', 9).pack(side=tk.RIGHT)
-        tk.Label(bar, textvariable=self.status, bg=c['panel'], fg=c['muted'], font=('Segoe UI', 9)).pack(side=tk.RIGHT, padx=10)
+        self.worker_status_label = tk.Label(bar, textvariable=self.status, bg=c['panel'], fg=c['muted'], font=('Segoe UI', 9))
+        self.worker_status_label.pack(side=tk.RIGHT, padx=10)
         footer = tk.Frame(self, bg=c['panel'], padx=10, pady=8)
         footer.pack(side=tk.BOTTOM, fill=tk.X, padx=22, pady=(0, 10))
         app._button(footer, 'Сохранить расписание', self.save, primary=True).pack(side=tk.RIGHT)
@@ -125,8 +128,24 @@ class SchedulerPanel(tk.Frame):
         combo.grid(row=0, column=3, sticky='ew')
         combo.bind('<MouseWheel>', lambda event: 'break')
         for col, (label, variable, width) in enumerate((('Дата · ГГГГ-ММ-ДД',self.date,12), ('Время · ЧЧ:ММ',self.clock,7), ('Интервал · минуты',self.interval,8))):
-            app._label(fields, label, 9, 'muted').grid(row=1,column=col,sticky='w',pady=(6,0))
-            app._entry(fields, variable, width=width).grid(row=2,column=col,sticky='ew',padx=(0,6))
+            caption = app._label(fields, label, 9, 'muted')
+            caption.grid(row=1,column=col,sticky='w',pady=(6,0))
+            if variable is self.date:
+                date_row = tk.Frame(fields, bg=c['panel'])
+                date_row.grid(row=2, column=col, sticky='ew', padx=(0, 6))
+                self.date_entry = app._entry(date_row, variable, width=width)
+                self.date_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+                self.date_button = app._button(date_row, '▦', self.choose_date)
+                self.date_button.pack(side=tk.LEFT, padx=(4, 0))
+                self.date_entry.bind('<Button-1>', self.choose_date, add='+')
+                self.date_entry.bind('<Alt-Down>', self.choose_date, add='+')
+                self.date_entry.bind('<F4>', self.choose_date, add='+')
+            else:
+                entry = app._entry(fields, variable, width=width)
+                entry.grid(row=2,column=col,sticky='ew',padx=(0,6))
+                if variable is self.interval:
+                    self.interval_label, self.interval_entry = caption, entry
+        self.update_schedule_fields()
         fields.columnconfigure(0, weight=1)
         fields.columnconfigure(3, weight=1)
         toggles = tk.Frame(right, bg=c['panel'])
@@ -169,6 +188,24 @@ class SchedulerPanel(tk.Frame):
             self._build()
             self._built=True
 
+    def choose_date(self, event=None):
+        picker = getattr(self, '_date_picker', None)
+        if picker is not None and picker.winfo_exists():
+            picker.lift()
+        else:
+            self._date_picker = CalendarPicker(self.date_entry, self.date, self.c)
+        return 'break'
+
+    def update_schedule_fields(self):
+        if not hasattr(self, 'interval_entry'):
+            return
+        visible = KINDS.get(self.kind.get()) == 'interval'
+        for widget in (self.interval_label, self.interval_entry):
+            if visible:
+                widget.grid()
+            else:
+                widget.grid_remove()
+
     def tree(self,parent,columns,show='headings'):
         frame=tk.Frame(parent,bg=self.c['panel']);frame.pack(fill=tk.BOTH,expand=True)
         tree=ttk.Treeview(frame,columns=[key for key,title,width in columns],show=show,selectmode='browse',height=4)
@@ -196,6 +233,9 @@ class SchedulerPanel(tk.Frame):
         if self._built:self.notice.configure(wraplength=230 if compact else 420)
 
     def destroyed(self,event):
+        if event.widget is self:
+            picker = getattr(self, '_date_picker', None)
+            if picker is not None and picker.winfo_exists():picker.destroy()
         if event.widget is self and self._poll_job:
             self.after_cancel(self._poll_job);self._poll_job=None
         if event.widget is self and self._monitor_job:
@@ -272,11 +312,13 @@ class SchedulerPanel(tk.Frame):
 
     def refresh_error(self,text):
         self._reading=False;self.status.set('Ошибка чтения расписаний: '+text)
+        self.worker_status_label.configure(fg=self.c['danger'])
 
     def render_snapshot(self,result):
         jobs,runs,steps,heartbeat,key,rows=result
         alive=time.time()-heartbeat.get('at',0)<20
         self.status.set(('● Выполняется последовательность' if heartbeat.get('run_id') else '● Фоновый исполнитель работает') if alive else '○ Фоновый исполнитель не работает · настройте фоновый запуск')
+        self.worker_status_label.configure(fg=self.c['success'] if alive else self.c['muted'])
         signature=json.dumps(jobs,sort_keys=True)+(str(int(time.time()/5)) if any(row['status']=='Выполняется' for row in jobs) else '')
         if signature!=self._jobs_signature:
             selected=self.jobs_tree.selection()
@@ -494,7 +536,8 @@ class SchedulerPanel(tk.Frame):
         enabled = self.enabled.get() if enable_override is None else enable_override
         try:
             rule=dict(kind=KINDS[self.kind.get()],start=self.date.get().strip()+' '+self.clock.get().strip(),
-                      minutes=int(self.interval.get()),days=[i for i,var in enumerate(self.days) if var.get()])
+                      days=[i for i,var in enumerate(self.days) if var.get()])
+            if rule['kind']=='interval':rule['minutes']=int(self.interval.get())
             from scheduler_store import next_time
             following = next_time(rule,time.time(),inclusive=True)
             if enabled and following is None:
