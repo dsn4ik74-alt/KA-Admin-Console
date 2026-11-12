@@ -38,24 +38,113 @@ public static class KaOneCFactory {
 '@
     return ,([KaOneCFactory]::Open($path))
 }
+function ComFailure([string]$operation,[string]$name,$exception) {
+    $cause=$exception
+    while($null -ne $cause.InnerException){$cause=$cause.InnerException}
+    $code='0x'+$cause.HResult.ToString('X8')
+    $phase=if($script:readStage){$script:readStage}else{'Обращение к 1С'}
+    return ($phase+': '+$operation+' «'+$name+'» · '+$code+'. '+$cause.Message)
+}
+function Stage([string]$text) {
+    $script:readStage=$text
+    Emit 'stage' $text
+}
 function M($object,[string]$name,[object[]]$arguments=@()) {
-    if([Runtime.InteropServices.Marshal]::IsComObject($object)) {
-        return ,($object.GetType().InvokeMember($name,[Reflection.BindingFlags]::InvokeMethod,$null,$object,$arguments))
-    }
-    return ,($object.PSObject.Methods[$name].Invoke($arguments))
+    try {
+        if($null -eq $object){throw 'Объект 1С не получен.'}
+        if([Runtime.InteropServices.Marshal]::IsComObject($object)) {
+            return ,($object.GetType().InvokeMember($name,[Reflection.BindingFlags]::InvokeMethod,$null,$object,$arguments))
+        }
+        if($null -eq $object.PSObject.Methods[$name]){throw ('Метод не найден: '+$name)}
+        return ,($object.PSObject.Methods[$name].Invoke($arguments))
+    } catch {throw (ComFailure 'метод' $name $_.Exception)}
 }
 function G($object,[string]$name) {
-    if([Runtime.InteropServices.Marshal]::IsComObject($object)) {
-        return ,($object.GetType().InvokeMember($name,[Reflection.BindingFlags]::GetProperty,$null,$object,$null))
-    }
-    return ,($object.$name)
+    try {
+        if($null -eq $object){throw 'Объект 1С не получен.'}
+        if([Runtime.InteropServices.Marshal]::IsComObject($object)) {
+            return ,($object.GetType().InvokeMember($name,[Reflection.BindingFlags]::GetProperty,$null,$object,$null))
+        }
+        if($null -eq $object.PSObject.Properties[$name]){throw ('Свойство не найдено: '+$name)}
+        return ,($object.$name)
+    } catch {throw (ComFailure 'свойство' $name $_.Exception)}
 }
 function S($object,[string]$name,$value) {
-    if([Runtime.InteropServices.Marshal]::IsComObject($object)) {
-        [void]$object.GetType().InvokeMember($name,[Reflection.BindingFlags]::SetProperty,$null,$object,@($value))
-    } else {$object.$name=$value}
+    try {
+        if($null -eq $object){throw 'Объект 1С не получен.'}
+        if([Runtime.InteropServices.Marshal]::IsComObject($object)) {
+            [void]$object.GetType().InvokeMember($name,[Reflection.BindingFlags]::SetProperty,$null,$object,@($value))
+        } else {$object.$name=$value}
+    } catch {throw (ComFailure 'запись свойства' $name $_.Exception)}
+}
+function InitializeComEnumeration {
+    if('KaOneCEnumeration' -as [type]){return}
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections;
+using System.Reflection;
+using System.Runtime.InteropServices;
+public static class KaOneCEnumeration {
+    [ComImport, Guid("00020404-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IEnumVariant {
+        [PreserveSig] int Next(uint count,
+            [Out, MarshalAs(UnmanagedType.LPArray, ArraySubType=UnmanagedType.Struct, SizeParamIndex=0)] object[] values,
+            out uint fetched);
+        [PreserveSig] int Skip(uint count);
+        [PreserveSig] int Reset();
+        [PreserveSig] int Clone(out IEnumVariant copy);
+    }
+    public static IEnumerable Read(object collection) {
+        object raw=collection.GetType().InvokeMember("[DispID=-4]",BindingFlags.GetProperty,null,collection,null);
+        try {
+            IEnumerator managed=raw as IEnumerator;
+            if(managed!=null) {
+                while(managed.MoveNext())yield return managed.Current;
+                yield break;
+            }
+            IEnumVariant iterator=(IEnumVariant)raw;
+            object[] item=new object[1];uint fetched;
+            for(;;) {
+                int code=iterator.Next(1,item,out fetched);
+                Marshal.ThrowExceptionForHR(code);
+                if(fetched==0)yield break;
+                yield return item[0];item[0]=null;
+            }
+        } finally {
+            IDisposable disposable=raw as IDisposable;
+            if(disposable!=null)disposable.Dispose();
+            else if(raw!=null && Marshal.IsComObject(raw))Marshal.ReleaseComObject(raw);
+        }
+    }
+}
+'@
 }
 function Items($collection) {
+    if($null -eq $collection){throw (ComFailure 'коллекция' 'перебор элементов' ([InvalidOperationException]::new('Коллекция 1С не получена.')))}
+    # Metadata collections and user roles do not all expose Get(index).
+    # COM's standard enumerator also works for these collections and for arrays.
+    if([Runtime.InteropServices.Marshal]::IsComObject($collection)) {
+        try {
+            InitializeComEnumeration
+            foreach($item in [KaOneCEnumeration]::Read($collection)){Write-Output -NoEnumerate $item}
+        } catch {throw (ComFailure 'коллекция' 'IEnumVARIANT / перебор элементов' $_.Exception)}
+        return
+    }
+    if($collection -is [Collections.IEnumerable]) {
+        $iterator=$null
+        try {
+            $iterator=([Collections.IEnumerable]$collection).GetEnumerator()
+            while($iterator.MoveNext()){Write-Output -NoEnumerate $iterator.Current}
+        } catch {throw (ComFailure 'коллекция' 'перебор элементов' $_.Exception)}
+        finally {
+            if($iterator -is [IDisposable]){$iterator.Dispose()}
+            elseif($null -ne $iterator -and [Runtime.InteropServices.Marshal]::IsComObject($iterator)) {
+                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($iterator)
+            }
+        }
+        return
+    }
+    # Explicit indexed collections supplied by managed adapters.
     $count=[int](M $collection 'Количество')
     for($i=0;$i -lt $count;$i++){Write-Output -NoEnumerate (M $collection 'Получить' @($i))}
 }
@@ -76,6 +165,7 @@ function FindUser($id) {
     return ,(M $users 'НайтиПоУникальномуИдентификатору' @($uid))
 }
 function UserInfo($user) {
+    $name=[string](G $user 'Имя');$script:readStage='Чтение пользователя «'+$name+'»'
     $roles=@(Items (G $user 'Роли')|ForEach-Object{[string](G $_ 'Имя')}|Sort-Object)
     $id=Uid (G $user 'УникальныйИдентификатор')
     $groups=@();$catalogId=''
@@ -86,7 +176,7 @@ function UserInfo($user) {
             $groups=@($groupRows|Where-Object{$_.members -contains $catalogId}|ForEach-Object{$_.id}|Sort-Object)
         }
     }
-    $result=[ordered]@{id=$id;name=[string](G $user 'Имя');full_name=[string](G $user 'ПолноеИмя');roles=$roles;
+    $result=[ordered]@{id=$id;name=$name;full_name=[string](G $user 'ПолноеИмя');roles=$roles;
         standard_auth=[bool](G $user 'АутентификацияСтандартная');os_auth=[bool](G $user 'АутентификацияОС');
         os_user=[string](G $user 'ПользовательОС');show_in_list=[bool](G $user 'ПоказыватьВСпискеВыбора');
         groups=$groups;catalog_id=$catalogId}
@@ -109,8 +199,11 @@ function GroupRows {
     return $rows
 }
 function Inventory {
+    Stage 'Получение списка пользователей информационной базы'
     $listing=@(Items (M $users 'ПолучитьПользователей')|ForEach-Object{UserInfo $_})
+    Stage 'Чтение ролей конфигурации'
     $roles=@(Items (G $metadata 'Роли')|ForEach-Object{@{name=[string](G $_ 'Имя');title=[string](G $_ 'Синоним')}})
+    Stage 'Чтение названия и версии конфигурации'
     return @{mode=$mode;reason=$reason;configuration=[string](G $metadata 'Синоним');version=[string](G $metadata 'Версия');
         users=$listing;roles=$roles;groups=@($groupRows|ForEach-Object{@{id=$_.id;name=$_.name}})}
 }
@@ -206,13 +299,17 @@ function ApplyChange($change) {
 
 $connector=$null;$connection=$null
 try {
+    Stage ('Загрузка COM-соединителя 1С '+[string]$job.target.version)
     $connector=NewConnector ([string]$job.connector)
     $login=([string]$job.credentials.user).Replace('"','""');$password=([string]$job.credentials.password).Replace('"','""')
     $address=[string]$job.target.address+'Usr="'+$login+'";Pwd="'+$password+'";'
+    Stage 'Подключение к информационной базе через COM'
     $connection=M $connector 'Connect' @($address)
+    Stage 'Получение менеджера пользователей и метаданных'
     $users=G $connection 'ПользователиИнформационнойБазы';$metadata=G $connection 'Метаданные'
     $mode='platform';$reason='Механизм пользователей БСП не обнаружен. Доступны пользователи и роли платформы; можно открыть Конфигуратор.'
     $userCatalog=$null;$groupCatalog=$null
+    Stage 'Определение способа управления пользователями'
     try {
         $catalogs=G $metadata 'Справочники';$userMeta=M $catalogs 'Найти' @('Пользователи');$groupMeta=M $catalogs 'Найти' @('ГруппыДоступа')
         if($null -ne $userMeta -and $null -ne $groupMeta) {
@@ -226,7 +323,11 @@ try {
                 $mode='bsp';$reason='БСП: карточки пользователей и группы доступа. Запись выполняется штатными обработчиками конфигурации.'
             }
         }
-    } catch {$reason='Прикладной механизм БСП недоступен во внешнем соединении. Доступны роли платформы либо Конфигуратор.'}
+    } catch {
+        $reason='Прикладной механизм БСП недоступен во внешнем соединении. Доступны роли платформы либо Конфигуратор.'
+        Emit 'warning' ($reason+' '+$_.Exception.Message)
+    }
+    Stage 'Чтение групп доступа'
     $groupRows=@(GroupRows)
     if($job.action -eq 'inspect'){$result=Inventory}
     elseif($job.action -eq 'change') {
