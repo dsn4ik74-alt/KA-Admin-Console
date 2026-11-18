@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.10-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.10)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.10)
+[![Версия](https://img.shields.io/badge/версия-21.11-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.11)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.11)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.10-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.10/KA-Admin-Console-21.10.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.11-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.11/KA-Admin-Console-21.11.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,11 +38,11 @@
 
 ## Что изменилось
 
-**21.10**
+**21.11**
 
-- В «ИБ» добавлена отдельная кнопка «Копировать адрес», пункт ПКМ → «Скопировать адрес» и сочетание Ctrl+Shift+C.
-- При выборе нескольких баз адреса копируются отдельными строками в формате `Srvr="сервер:порт";Ref="база";`. Используется фактический порт кластера; при отсутствии данных предлагается обновить список.
-- У каждой ИБ отображается версия платформы кластера в отдельном столбце «Платформа», с поиском и сортировкой. Отсутствующие сведения явно помечаются «Не определена».
+- В результатах SQL-консоли PostgreSQL исправлены Ctrl+A и Ctrl+C для русской и английской раскладок. Можно выделить и скопировать все строки текущей таблицы.
+- В общем списке ИБ и серверов также работают Ctrl+A и Ctrl+C, включая русскую раскладку.
+- Добавлена кнопка «Копировать весь вывод»: все наборы результатов и сообщения сервера копируются вместе, без повторного выполнения SQL.
 
 SQL-консоль подключается по TCP с компьютера приложения к PostgreSQL на Windows или Linux. Драйвер встроен в EXE. Запросы выполняются с правами выбранного пользователя; текст SQL не сохраняется в истории операций.
 
