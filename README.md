@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.11-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.11)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.11)
+[![Версия](https://img.shields.io/badge/версия-21.12-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.12)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.12)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.11-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.11/KA-Admin-Console-21.11.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.12-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.12/KA-Admin-Console-21.12.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,11 +38,11 @@
 
 ## Что изменилось
 
-**21.11**
+**21.12**
 
-- В результатах SQL-консоли PostgreSQL исправлены Ctrl+A и Ctrl+C для русской и английской раскладок. Можно выделить и скопировать все строки текущей таблицы.
-- В общем списке ИБ и серверов также работают Ctrl+A и Ctrl+C, включая русскую раскладку.
-- Добавлена кнопка «Копировать весь вывод»: все наборы результатов и сообщения сервера копируются вместе, без повторного выполнения SQL.
+- В управлении пользователями добавлены отдельные кнопки «Роли…» и «Пароль…» для существующих учётных записей. Изменение ролей сохраняет пароль, смена пароля сохраняет права.
+- Исправлено чтение строк групп доступа БСП. Если структура группы недоступна, список пользователей и ролей остаётся виден с предупреждением.
+- Перед записью проверяются актуальность свойств пользователя и наличие выбранных ролей. Группы доступа БСП меняются отдельно через «Изменить…».
 
 SQL-консоль подключается по TCP с компьютера приложения к PostgreSQL на Windows или Linux. Драйвер встроен в EXE. Запросы выполняются с правами выбранного пользователя; текст SQL не сохраняется в истории операций.
 
