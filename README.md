@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.13-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.13)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.13)
+[![Версия](https://img.shields.io/badge/версия-21.14-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.14)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.14)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.13-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.13/KA-Admin-Console-21.13.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.14-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.14/KA-Admin-Console-21.14.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,11 +38,11 @@
 
 ## Что изменилось
 
-**21.13**
+**21.14**
 
-- В «СУБД → MSSQL» добавлена «Консоль MSSQL»: SQL-редактор, выбор базы, результаты таблицами, сообщения сервера и отмена запроса.
-- Поддерживаются вход Windows или SQL Server, сохранённые подключения, выделенный фрагмент SQL, разделитель GO и несколько наборов результатов.
-- Каждая вкладка держит собственный сеанс: временные таблицы и транзакции сохраняются между запросами. Доступны BEGIN TRANSACTION, COMMIT и ROLLBACK.
+- После ошибки или отмены загрузки конфигурации окно выбора базы остаётся открытым с введёнными параметрами.
+- При закрытии и повторном открытии окна сохраняются режим новой/существующей базы, выбранный сервер и кластер, реквизиты СУБД и авторизация ИБ.
+- Черновик хранится только в памяти текущей вкладки, очищается после успешной загрузки или установки другого шаблона. Автоматический повтор загрузки не выполняется.
 
 SQL-консоли выполняют запросы с правами выбранного пользователя; текст SQL не сохраняется в истории операций. Для MSSQL используется встроенный в Windows .NET SqlClient, установка SSMS не требуется.
 
