@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.15-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.15)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.15)
+[![Версия](https://img.shields.io/badge/версия-21.16-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.16)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.16)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.15-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.15/KA-Admin-Console-21.15.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.16-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.16/KA-Admin-Console-21.16.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,11 +38,11 @@
 
 ## Что изменилось
 
-**21.15**
+**21.16**
 
-- Исправлено чтение групп доступа БСП с одним участником: ошибка «Свойство не найдено: Пользователь. Тип объекта: System.Int32» больше не возникает в этом сценарии.
-- Строка табличной части сохраняется целиком при передаче через PowerShell. Проверены пустые группы, один и несколько участников.
-- После обновления заново получите пользователей выбранной базы, чтобы обновить сведения о группах и доступность редактирования.
+- Повторная установка платформы 1С на Windows добавляет выбранные компоненты с сохранением уже установленных сервера, клиентов и языков.
+- Перед запуском проверяются регистрация MSI и ключевые файлы. Если выбранные компоненты уже на месте, повторная установка пропускается; отсутствующие ключевые файлы восстанавливаются.
+- Установленные компоненты отмечены подписью, существующие службы сохраняются, журнал показывает, что уже есть и что добавляется.
 
 SQL-консоли выполняют запросы с правами выбранного пользователя; текст SQL не сохраняется в истории операций. Для MSSQL используется встроенный в Windows .NET SqlClient, установка SSMS не требуется.
 
