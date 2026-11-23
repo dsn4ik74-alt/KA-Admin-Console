@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.17-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.17)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.17)
+[![Версия](https://img.shields.io/badge/версия-21.18-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.18)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.18)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.17-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.17/KA-Admin-Console-21.17.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.18-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.18/KA-Admin-Console-21.18.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,11 +38,10 @@
 
 ## Что изменилось
 
-**21.17**
+**21.18**
 
-- Новая вкладка «1С → Обновление платформы»: выбор локальной службы сервера или хранилища конфигураций и новой версии из ИТС.
-- Прежний набор компонентов и языков определяется через Windows Installer. Устанавливается такой же набор новой платформы, затем переключается только выбранная служба с сохранением её параметров.
-- Перед переключением сохраняется копия параметров службы. Запуск после обновления включается флажком; по умолчанию служба остаётся остановленной. Старая платформа сохраняется.
+- Исправлена ошибка `Specified cast is not valid` при подключении в консоли MSSQL: состояние транзакции теперь читается с правильным преобразованием числового типа.
+- Проверены подключение, получение списка баз, транзакции, прерывание запросов и независимость сеансов.
 
 SQL-консоли выполняют запросы с правами выбранного пользователя; текст SQL не сохраняется в истории операций. Для MSSQL используется встроенный в Windows .NET SqlClient, установка SSMS не требуется.
 
