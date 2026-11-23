@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.18-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.18)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.18)
+[![Версия](https://img.shields.io/badge/версия-21.19-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.19)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.19)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.18-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.18/KA-Admin-Console-21.18.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.19-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.19/KA-Admin-Console-21.19.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,10 +38,11 @@
 
 ## Что изменилось
 
-**21.18**
+**21.19**
 
-- Исправлена ошибка `Specified cast is not valid` при подключении в консоли MSSQL: состояние транзакции теперь читается с правильным преобразованием числового типа.
-- Проверены подключение, получение списка баз, транзакции, прерывание запросов и независимость сеансов.
+- В подтверждении удаления базы MSSQL / PostgreSQL можно также удалить её регистрации в кластерах 1С. Список берётся из «ИБ», несколько строк выделяются через Ctrl + ЛКМ. Перед удалением проверяется соответствие каждой выбранной ИБ базе СУБД.
+- Убрано ограничение ожидания при получении ссылки и скачивании дистрибутивов из ИТС; отмена загрузки остаётся доступной.
+- Включено исправление подключения консоли MSSQL из 21.18 (`Specified cast is not valid`).
 
 SQL-консоли выполняют запросы с правами выбранного пользователя; текст SQL не сохраняется в истории операций. Для MSSQL используется встроенный в Windows .NET SqlClient, установка SSMS не требуется.
 
