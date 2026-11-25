@@ -6,10 +6,10 @@
 
 Администрирование серверов и баз данных из одного приложения для Windows.
 
-[![Версия](https://img.shields.io/badge/версия-21.20-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.20)
-[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.20)
+[![Версия](https://img.shields.io/badge/версия-21.21-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.21)
+[![ОС](https://img.shields.io/badge/Windows-x64-4c8198?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/tag/v21.21)
 
-[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.20-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.20/KA-Admin-Console-21.20.zip)
+[![Скачать ZIP](https://img.shields.io/badge/↓_Скачать_ZIP_для_Windows-21.21-15803d?style=for-the-badge)](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases/download/v21.21/KA-Admin-Console-21.21.zip)
 
 [Все версии и изменения](https://github.com/dsn4ik74-alt/KA-Admin-Console/releases)
 
@@ -38,12 +38,10 @@
 
 ## Что изменилось
 
-**21.20**
+**21.21**
 
-- В подтверждении удаления базы MSSQL / PostgreSQL можно также удалить её регистрации в кластерах 1С. Список берётся из «ИБ», несколько строк выделяются через Ctrl + ЛКМ. Перед удалением проверяется соответствие каждой выбранной ИБ базе СУБД.
-- В «ИБ» кнопка «Проверить выделенные» и команда ПКМ читают название и релиз только выбранных через Ctrl + ЛКМ баз с общей УЗ из этой вкладки. Правый щелчок сохраняет множественное выделение.
-- Убрано ограничение ожидания при получении ссылки и скачивании дистрибутивов из ИТС; отмена загрузки остаётся доступной.
-- Включено исправление подключения консоли MSSQL из 21.18 (`Specified cast is not valid`).
+- В MSSQL для выбранной базы можно менять модель восстановления и сжимать журнал транзакций. Целевой размер по умолчанию — 1024 МБ.
+- Действия доступны в «Бэкап», «Восстановление» и у источника и получателя в «Бэкап + восстановление». Фактический размер и модель обновляются в таблице после операции.
 
 SQL-консоли выполняют запросы с правами выбранного пользователя; текст SQL не сохраняется в истории операций. Для MSSQL используется встроенный в Windows .NET SqlClient, установка SSMS не требуется.
 
